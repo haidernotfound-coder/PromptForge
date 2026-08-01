@@ -133,14 +133,10 @@ export function AiPanel({
     setFixingAutomatically(true);
     // Deterministic and self-verifying: never applies a rewrite that scores
     // lower than the original by the same rubric used to grade it.
-    const { fixedPrompt, beforeScore, afterScore } = autoFixPrompt(body);
+    const { fixedPrompt } = autoFixPrompt(body);
     onApply(fixedPrompt, "Critic auto-fix");
     criticCacheRef.current = null; // prompt changed — next open re-analyzes
-    if (afterScore > beforeScore) {
-      toast.success(`Applied the Critic's fixes — score ${beforeScore} → ${afterScore}`);
-    } else {
-      toast.success("Prompt already looked solid — no changes needed");
-    }
+    toast.success("Fixed automatically");
     setFixingAutomatically(false);
     setCriticOpen(false);
   }
