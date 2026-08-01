@@ -67,12 +67,17 @@ export const MODELS = [
   { id: "claude-sonnet-5", label: "Claude Sonnet 5", provider: "Anthropic" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "Anthropic" },
   { id: "claude-fable-5", label: "Claude Fable 5", provider: "Anthropic" },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "OpenAI" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "OpenAI" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "OpenAI" },
+  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", provider: "Google" },
+  { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro", provider: "Google" },
+  { id: "grok-4.5", label: "Grok 4.5", provider: "xAI" },
   { id: "gpt-4o", label: "GPT-4o", provider: "OpenAI" },
   { id: "gpt-4-turbo", label: "GPT-4 Turbo", provider: "OpenAI" },
   { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", provider: "Anthropic" },
   { id: "claude-3-opus", label: "Claude 3 Opus", provider: "Anthropic" },
   { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro", provider: "Google" },
-  { id: "grok-2", label: "Grok-2", provider: "xAI" },
   { id: "other", label: "Other / model-agnostic", provider: "" },
 ] as const;
 export type ModelId = (typeof MODELS)[number]["id"];

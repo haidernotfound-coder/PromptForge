@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
-import { isAiConfigured } from "@/lib/supabase/config";
+import { isAiConfigured, getGroqApiKeys } from "@/lib/supabase/config";
 
 /**
  * Phase 7 AI provider wiring.
  *
  * Runs Improve / Rewrite / Expand / Shorten against the real Groq API
- * (Llama 3.1 8B Instant) using a server-only `GROQ_API_KEY` (see
- * `.env.example`) — the key never reaches the browser. If it's not
+ * (Llama 3.1 8B Instant) using server-only `GROQ_API_KEY_1`..`GROQ_API_KEY_5`
+ * (see `.env.example`) — keys never reach the browser. If none are
  * configured, callers (see `src/lib/ai.ts`) fall back to the Phase 4 local
  * simulation so the AI panel keeps working with zero setup.
+ *
+ * Multi-key fallback: up to 5 Groq API keys can be configured. If a key
+ * hits its daily/rate limit (HTTP 429) or is otherwise rejected (401/403),
+ * the request instantly retries with the next configured key in the same
+ * request — no user-facing failure and no waiting for the exhausted key to
+ * reset. The last key that worked is remembered (per server instance) so
+ * later requests start there instead of always retrying exhausted keys
+ * first.
  */
 
 export const runtime = "nodejs";
@@ -39,6 +47,53 @@ const TONE_INSTRUCTIONS: Record<RewriteTone, string> = {
   friendly: "a warm, friendly tone",
   concise: "a terse, concise tone with no unnecessary words",
 };
+
+// Remembers which key index last succeeded, per server instance, so
+// subsequent requests don't re-try already-exhausted keys from the start
+// every time. Reset naturally on redeploy/restart.
+let lastGoodKeyIndex = 0;
+
+type GroqCallResult =
+  | { ok: true; output: string }
+  | { ok: false; exhausted: true } // 401/403/429 — try the next key
+  | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
+
+async function callGroq(apiKey: string, systemPrompt: string, input: string): Promise<GroqCallResult> {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      max_tokens: 2000,
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: input },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("Groq API error", response.status, detail);
+    // 429 = rate/daily limit hit. 401/403 = invalid or revoked key.
+    // Either way, this key is done for now — move on to the next one.
+    if (response.status === 429 || response.status === 401 || response.status === 403) {
+      return { ok: false, exhausted: true };
+    }
+    return { ok: false, exhausted: false, status: response.status };
+  }
+
+  const data = await response.json();
+  const output = (data.choices?.[0]?.message?.content ?? "").trim();
+  if (!output) {
+    return { ok: false, exhausted: false, status: 502 };
+  }
+  return { ok: true, output };
+}
 
 export async function POST(request: Request) {
   if (!isAiConfigured()) {
@@ -77,37 +132,42 @@ export async function POST(request: Request) {
   ].join(" ");
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        max_tokens: 2000,
-        temperature: 0.4,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: input },
-        ],
-      }),
-    });
+    const keys = getGroqApiKeys();
+    // Start from the last key that worked, wrapping around, so a healthy
+    // key found mid-list doesn't get bypassed every request.
+    const order = keys.map((_, i) => (lastGoodKeyIndex + i) % keys.length);
 
-    if (!response.ok) {
-      const detail = await response.text();
-      console.error("Groq API error", response.status, detail);
-      return NextResponse.json({ error: "AI provider request failed" }, { status: 502 });
+    let lastFailure: { exhausted: boolean; status?: number } | null = null;
+
+    for (const i of order) {
+      const result = await callGroq(keys[i], systemPrompt, input);
+
+      if (result.ok) {
+        lastGoodKeyIndex = i; // remember this key for next time
+        return NextResponse.json({ output: result.output });
+      }
+
+      lastFailure = result.exhausted
+        ? { exhausted: true }
+        : { exhausted: false, status: result.status };
+
+      if (!result.exhausted) {
+        // A non-quota failure (bad request, provider outage, etc.) — no
+        // point hammering every remaining key with the same broken request.
+        break;
+      }
+      // Otherwise this key is rate-limited/invalid — loop continues and
+      // instantly tries the next configured key.
     }
 
-    const data = await response.json();
-    const output = (data.choices?.[0]?.message?.content ?? "").trim();
-
-    if (!output) {
-      return NextResponse.json({ error: "AI provider returned no output" }, { status: 502 });
+    if (lastFailure && !lastFailure.exhausted) {
+      return NextResponse.json({ error: "AI provider request failed" }, { status: lastFailure.status ?? 502 });
     }
-
-    return NextResponse.json({ output });
+    // Every configured key was exhausted (rate-limited or invalid).
+    return NextResponse.json(
+      { error: "All configured AI provider keys are currently rate-limited or invalid" },
+      { status: 429 }
+    );
   } catch (err) {
     console.error("Groq API request failed", err);
     return NextResponse.json({ error: "AI provider request failed" }, { status: 502 });

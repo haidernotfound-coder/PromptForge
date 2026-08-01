@@ -17,6 +17,25 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
+/**
+ * Returns every configured Groq API key, in order.
+ *
+ * Supports up to 5 keys via `GROQ_API_KEY_1`..`GROQ_API_KEY_5`, so that when
+ * one key hits its daily/rate limit, the AI route can instantly retry the
+ * request with the next one. `GROQ_API_KEY` (no suffix) is also honored,
+ * as key 1, for backward compatibility with single-key setups.
+ */
+export function getGroqApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.GROQ_API_KEY_1 || process.env.GROQ_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 5; i++) {
+    const key = process.env[`GROQ_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
 export function isAiConfigured(): boolean {
-  return Boolean(process.env.GROQ_API_KEY);
+  return getGroqApiKeys().length > 0;
 }
