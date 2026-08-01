@@ -13,6 +13,13 @@ import { isAiConfigured } from "@/lib/supabase/config";
 
 export const runtime = "nodejs";
 
+/** Lets the client know whether a real provider is wired up, without ever
+ *  exposing GROQ_API_KEY itself (that stays server-only). Used by the AI
+ *  assist panel to show accurate "demo mode" vs "live" copy. */
+export async function GET() {
+  return NextResponse.json({ configured: isAiConfigured() });
+}
+
 type AiActionType = "improve" | "rewrite" | "expand" | "shorten";
 type RewriteTone = "professional" | "casual" | "confident" | "friendly" | "concise";
 

@@ -34,9 +34,25 @@ export function AiPanel({
 }) {
   const [pending, setPending] = React.useState<AiActionType | null>(null);
   const [tone, setTone] = React.useState<RewriteTone>("professional");
+  const [aiConfigured, setAiConfigured] = React.useState<boolean | null>(null);
   const [preview, setPreview] = React.useState<{ action: AiActionType; output: string; summary: string } | null>(
     null
   );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ai")
+      .then((res) => (res.ok ? res.json() : { configured: false }))
+      .then((data) => {
+        if (!cancelled) setAiConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setAiConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function run(action: AiActionType) {
     if (!body.trim()) {
@@ -60,7 +76,11 @@ export function AiPanel({
             <Sparkles className="h-4 w-4 text-accent" /> AI assist
           </CardTitle>
           <CardDescription>
-            Runs locally in demo mode — a real model provider is wired up in a later phase.
+            {aiConfigured === null
+              ? "Checking AI provider…"
+              : aiConfigured
+                ? "Powered by Groq (Llama 3.1 8B Instant) — real model calls."
+                : "Runs locally in demo mode — set GROQ_API_KEY to wire up a real model provider."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
