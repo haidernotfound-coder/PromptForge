@@ -2,12 +2,19 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, Loader2, Sparkles, Wand2, X } from "lucide-react";
+import { Check, Loader2, Sparkles, Wand2, X, Gauge, ThumbsUp, ThumbsDown, Lightbulb, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { runAiAction, aiActionLabel, type AiActionType, type RewriteTone } from "@/lib/ai";
+import {
+  runAiAction,
+  aiActionLabel,
+  critiquePrompt,
+  type AiActionType,
+  type RewriteTone,
+  type PromptCritique,
+} from "@/lib/ai";
 import { extractVariables } from "@/components/prompts/editor-toolbar";
 import { VariableFillModal } from "@/components/prompts/variable-fill-modal";
 import { cn } from "@/lib/utils";
@@ -44,6 +51,13 @@ export function AiPanel({
   // fill-in modal first instead of running immediately.
   const [variablePrompt, setVariablePrompt] = React.useState<AiActionType | null>(null);
   const variables = React.useMemo(() => extractVariables(body), [body]);
+
+  // AI Prompt Critic — separate from the four text-transform actions above,
+  // since it produces a structured analysis rather than a straight rewrite.
+  const [criticLoading, setCriticLoading] = React.useState(false);
+  const [critique, setCritique] = React.useState<PromptCritique | null>(null);
+  const [criticOpen, setCriticOpen] = React.useState(false);
+  const [fixingAutomatically, setFixingAutomatically] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -84,6 +98,33 @@ export function AiPanel({
     void runWithBody(action, body);
   }
 
+  async function runCritic() {
+    if (!body.trim()) {
+      toast.error("Write a prompt body first");
+      return;
+    }
+    setCriticLoading(true);
+    setCriticOpen(true);
+    try {
+      const result = await critiquePrompt(body);
+      setCritique(result);
+    } catch {
+      toast.error("Couldn't analyze this prompt — try again.");
+      setCriticOpen(false);
+    } finally {
+      setCriticLoading(false);
+    }
+  }
+
+  function fixAutomatically() {
+    if (!critique) return;
+    setFixingAutomatically(true);
+    onApply(critique.fixedPrompt, "Critic auto-fix");
+    toast.success("Applied the Critic's suggested fixes");
+    setFixingAutomatically(false);
+    setCriticOpen(false);
+  }
+
   return (
     <>
       <Card>
@@ -116,6 +157,18 @@ export function AiPanel({
                 {label}
               </Button>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending !== null}
+              onClick={() => void runCritic()}
+              className="gap-1.5"
+              title="Score this prompt and get actionable suggestions"
+            >
+              <Gauge className="h-3.5 w-3.5" />
+              Critic
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-text-faint">Rewrite tone</span>
@@ -174,6 +227,106 @@ export function AiPanel({
               }}
             >
               <Check className="h-3.5 w-3.5" /> Apply to prompt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={criticOpen}
+        onOpenChange={(open) => {
+          setCriticOpen(open);
+          if (!open) setCritique(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5">
+              <Gauge className="h-4 w-4 text-accent" /> Prompt Critic
+            </DialogTitle>
+            <DialogDescription>Quality score, strengths, weaknesses, and actionable suggestions.</DialogDescription>
+          </DialogHeader>
+
+          {criticLoading || !critique ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-faint">
+              <Loader2 className="h-4 w-4 animate-spin" /> Analyzing your prompt…
+            </div>
+          ) : (
+            <div className="max-h-[26rem] space-y-4 overflow-y-auto pr-1">
+              <div className="flex items-center gap-3 rounded-md border border-border bg-surface p-3">
+                <div
+                  className={cn(
+                    "flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 font-display text-lg font-semibold",
+                    critique.score >= 80
+                      ? "border-green-500 text-green-500"
+                      : critique.score >= 60
+                        ? "border-brass text-brass"
+                        : "border-danger text-danger"
+                  )}
+                >
+                  {critique.score}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text">
+                    {critique.score >= 80 ? "Strong prompt" : critique.score >= 60 ? "Decent, room to improve" : "Needs work"}
+                  </p>
+                  <p className="text-xs text-text-faint">Score out of 100</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-text">
+                    <ThumbsUp className="h-3.5 w-3.5 text-green-500" /> Strengths
+                  </p>
+                  <ul className="space-y-1">
+                    {critique.strengths.map((s, i) => (
+                      <li key={i} className="text-xs text-text-muted">
+                        · {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-text">
+                    <ThumbsDown className="h-3.5 w-3.5 text-danger" /> Weaknesses
+                  </p>
+                  <ul className="space-y-1">
+                    {critique.weaknesses.map((w, i) => (
+                      <li key={i} className="text-xs text-text-muted">
+                        · {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-text">
+                  <Lightbulb className="h-3.5 w-3.5 text-brass" /> Suggestions
+                </p>
+                <ul className="space-y-1">
+                  {critique.suggestions.map((s, i) => (
+                    <li key={i} className="text-xs text-text-muted">
+                      · {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCriticOpen(false)}>
+              <X className="h-3.5 w-3.5" /> Close
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              disabled={!critique || criticLoading || fixingAutomatically}
+              onClick={fixAutomatically}
+            >
+              <Wrench className="h-3.5 w-3.5" /> Fix Automatically
             </Button>
           </DialogFooter>
         </DialogContent>

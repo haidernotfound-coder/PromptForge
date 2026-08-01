@@ -28,10 +28,12 @@ export async function GET() {
   return NextResponse.json({ configured: isAiConfigured() });
 }
 
-type AiActionType = "improve" | "rewrite" | "expand" | "shorten";
+type AiActionType = "improve" | "rewrite" | "expand" | "shorten" | "critique";
 type RewriteTone = "professional" | "casual" | "confident" | "friendly" | "concise";
 
-const ACTION_INSTRUCTIONS: Record<AiActionType, string> = {
+type TransformAction = Exclude<AiActionType, "critique">;
+
+const ACTION_INSTRUCTIONS: Record<TransformAction, string> = {
   improve:
     "Tighten and clarify the wording of this prompt without changing its meaning or intent. Fix awkward phrasing, remove filler words, and make instructions more precise.",
   rewrite: "Rewrite this prompt in the given tone, preserving its meaning and intent.",
@@ -47,6 +49,16 @@ const TONE_INSTRUCTIONS: Record<RewriteTone, string> = {
   friendly: "a warm, friendly tone",
   concise: "a terse, concise tone with no unnecessary words",
 };
+
+const CRITIQUE_SYSTEM_PROMPT = [
+  "You are the AI Prompt Critic inside PromptForge, a prompt-management tool.",
+  "Analyze the quality of the given prompt as an instruction for a large language model.",
+  "The prompt may contain {{variable}} placeholders — treat those as intentional reusable slots, not a flaw.",
+  "Respond with ONLY a single valid JSON object (no markdown fences, no preamble, no trailing text) with exactly these fields:",
+  '"score" (integer 0-100 overall quality), "strengths" (array of 2-4 short strings), "weaknesses" (array of 2-4 short strings),',
+  '"suggestions" (array of 2-5 short, actionable strings), and "fixedPrompt" (a string containing a rewritten version of the prompt',
+  "that applies the suggestions while preserving the original intent and every {{variable}} placeholder exactly).",
+].join(" ");
 
 // Remembers which key index last succeeded, per server instance, so
 // subsequent requests don't re-try already-exhausted keys from the start
@@ -108,7 +120,8 @@ export async function POST(request: Request) {
   }
 
   const { action, input, tone } = body;
-  if (!action || !ACTION_INSTRUCTIONS[action]) {
+  const isCritique = action === "critique";
+  if (!action || (!isCritique && !ACTION_INSTRUCTIONS[action as TransformAction])) {
     return NextResponse.json({ error: "Invalid or missing action" }, { status: 400 });
   }
   if (typeof input !== "string" || !input.trim()) {
@@ -119,17 +132,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Prompt is too long" }, { status: 413 });
   }
 
-  const instruction =
-    action === "rewrite"
-      ? `${ACTION_INSTRUCTIONS.rewrite} Use ${TONE_INSTRUCTIONS[tone ?? "professional"]}.`
-      : ACTION_INSTRUCTIONS[action];
-
-  const systemPrompt = [
-    "You are the AI assist engine inside PromptForge, a prompt-management tool.",
-    instruction,
-    "The prompt may contain {{variable}} placeholders — preserve every one of them exactly, character for character, in the output.",
-    "Respond with ONLY the resulting prompt text. No preamble, no explanation, no markdown code fences, no quotes around it.",
-  ].join(" ");
+  const systemPrompt = isCritique
+    ? CRITIQUE_SYSTEM_PROMPT
+    : [
+        "You are the AI assist engine inside PromptForge, a prompt-management tool.",
+        action === "rewrite"
+          ? `${ACTION_INSTRUCTIONS.rewrite} Use ${TONE_INSTRUCTIONS[tone ?? "professional"]}.`
+          : ACTION_INSTRUCTIONS[action as TransformAction],
+        "The prompt may contain {{variable}} placeholders — preserve every one of them exactly, character for character, in the output.",
+        "Respond with ONLY the resulting prompt text. No preamble, no explanation, no markdown code fences, no quotes around it.",
+      ].join(" ");
 
   try {
     const keys = getGroqApiKeys();
