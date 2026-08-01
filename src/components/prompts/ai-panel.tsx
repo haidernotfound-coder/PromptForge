@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { runAiAction, aiActionLabel, type AiActionType, type RewriteTone } from "@/lib/ai";
+import { extractVariables } from "@/components/prompts/editor-toolbar";
+import { VariableFillModal } from "@/components/prompts/variable-fill-modal";
 import { cn } from "@/lib/utils";
 
 const ACTIONS: { kind: AiActionType; icon: typeof Wand2; label: string; blurb: string }[] = [
@@ -38,6 +40,10 @@ export function AiPanel({
   const [preview, setPreview] = React.useState<{ action: AiActionType; output: string; summary: string } | null>(
     null
   );
+  // When the prompt body contains {{variables}}, an action click opens the
+  // fill-in modal first instead of running immediately.
+  const [variablePrompt, setVariablePrompt] = React.useState<AiActionType | null>(null);
+  const variables = React.useMemo(() => extractVariables(body), [body]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -54,18 +60,28 @@ export function AiPanel({
     };
   }, []);
 
-  async function run(action: AiActionType) {
-    if (!body.trim()) {
-      toast.error("Write a prompt body first");
-      return;
-    }
+  async function runWithBody(action: AiActionType, input: string) {
     setPending(action);
     try {
-      const result = await runAiAction(action, body, { tone });
+      const result = await runAiAction(action, input, { tone });
       setPreview({ action: result.action, output: result.output, summary: result.summary });
     } finally {
       setPending(null);
     }
+  }
+
+  function run(action: AiActionType) {
+    if (!body.trim()) {
+      toast.error("Write a prompt body first");
+      return;
+    }
+    if (variables.length > 0) {
+      // Let the person fill in real values first — the AI action then runs
+      // against the filled-in content instead of the raw {{placeholders}}.
+      setVariablePrompt(action);
+      return;
+    }
+    void runWithBody(action, body);
   }
 
   return (
@@ -162,6 +178,19 @@ export function AiPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <VariableFillModal
+        open={variablePrompt !== null}
+        onOpenChange={(open) => !open && setVariablePrompt(null)}
+        body={body}
+        variables={variables}
+        actionLabel={variablePrompt ? aiActionLabel(variablePrompt, { tone }) : ""}
+        onConfirm={(filledBody) => {
+          const action = variablePrompt;
+          setVariablePrompt(null);
+          if (action) void runWithBody(action, filledBody);
+        }}
+      />
     </>
   );
 }
