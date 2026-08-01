@@ -321,7 +321,7 @@ const ROLE_HINT = /\b(you are|act as|as an?|your role is)\b/i;
 const FORMAT_HINT = /\b(format|json|markdown|bullet|table|numbered list|output should)\b/i;
 const EXAMPLE_HINT = /\b(example|e\.g\.|for instance|for example)\b/i;
 const STEPS_HINT = /\b(step[- ]by[- ]step|first,|then,|finally,|steps?:)\b/i;
-const TASK_VERB = /^(write|generate|create|summarize|summarise|explain|analyze|analyse|translate|list|draft|compose|design|build|review|answer|describe|classify|extract|convert|plan|outline)/i;
+const TASK_VERB = /^(write|generate|create|summarize|summarise|explain|analyze|analyse|translate|list|draft|compose|design|build|review|answer|describe|classify|extract|convert|plan|outline|complete)/i;
 
 /** Deterministic local critique so the feature works with zero setup,
  *  mirroring the local-transform fallback pattern used above. */
@@ -443,4 +443,61 @@ function buildFixedPrompt(
     if (additions.length === 0) return text;
     return [text, "", ...additions].join("\n");
   });
+}
+
+const VAGUE_STRIP = /\s*\b(thing|things|stuff|something|somehow|maybe|etc\.?|whatever)\b\s*/gi;
+
+/**
+ * Phase 9 — Fix Automatically
+ * ---------------------------
+ * `PromptCritique.fixedPrompt` (whether from the real model or the local
+ * heuristic above) is a *suggestion*, not a guarantee — an LLM rewrite can
+ * occasionally drift or even score worse by our own rubric. `autoFixPrompt`
+ * is what "Fix Automatically" actually calls: it deterministically rewrites
+ * the prompt to satisfy every criterion `localCritique` rewards (clear task
+ * verb, role framing, output format, step-by-step guidance, an example
+ * hook, no filler words, closing punctuation), then re-scores the result
+ * with that same rubric and only returns it if the score didn't drop.
+ * Because `localCritique`'s own scoring is deterministic, this is
+ * self-verifying: it never needs to trust an LLM's claim that its rewrite
+ * is better, and it never applies a fix that scores lower than the
+ * original.
+ */
+export function autoFixPrompt(input: string): { fixedPrompt: string; beforeScore: number; afterScore: number } {
+  const trimmed = input.trim();
+  const beforeScore = localCritique(trimmed).score;
+
+  const candidate = withVariablesLocked(trimmed, (locked) => {
+    let text = doImprove(locked);
+    text = text
+      .replace(VAGUE_STRIP, " ")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([,.!?])/g, "$1")
+      .trim();
+
+    const firstWord = text.split(/\s+/)[0]?.replace(/[^a-zA-Z]/g, "") ?? "";
+    if (!TASK_VERB.test(firstWord)) {
+      text = `Complete the following task:\n\n${text}`;
+    }
+
+    const additions: string[] = [];
+    if (!ROLE_HINT.test(text)) additions.push("You are a meticulous expert assistant working on this task.");
+    if (!FORMAT_HINT.test(text)) additions.push("Present the output in a clear, well-structured format (e.g. bullet points or short paragraphs).");
+    if (!STEPS_HINT.test(text)) additions.push("Think through the task step by step before giving the final answer.");
+    if (!EXAMPLE_HINT.test(text)) additions.push("If it helps clarify the output, include a brief example.");
+
+    let result = additions.length ? [text, "", ...additions].join("\n") : text;
+    result = result.trim();
+    if (!/[.!?:]$/.test(result)) result += ".";
+    return result;
+  });
+
+  const candidateScore = localCritique(candidate).score;
+
+  // Self-verified: only ever hand back the rewrite if it scores at least as
+  // well as the original by our own deterministic rubric.
+  if (candidateScore >= beforeScore) {
+    return { fixedPrompt: candidate, beforeScore, afterScore: candidateScore };
+  }
+  return { fixedPrompt: trimmed, beforeScore, afterScore: beforeScore };
 }

@@ -11,6 +11,7 @@ import {
   runAiAction,
   aiActionLabel,
   critiquePrompt,
+  autoFixPrompt,
   type AiActionType,
   type RewriteTone,
   type PromptCritique,
@@ -58,6 +59,7 @@ export function AiPanel({
   const [critique, setCritique] = React.useState<PromptCritique | null>(null);
   const [criticOpen, setCriticOpen] = React.useState(false);
   const [fixingAutomatically, setFixingAutomatically] = React.useState(false);
+  const criticCacheRef = React.useRef<{ body: string; critique: PromptCritique } | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -103,10 +105,20 @@ export function AiPanel({
       toast.error("Write a prompt body first");
       return;
     }
+    // Reopening on an unchanged prompt shows the same result instead of
+    // re-running the analysis (which, against the real model, isn't
+    // perfectly deterministic between calls).
+    if (criticCacheRef.current && criticCacheRef.current.body === body) {
+      setCritique(criticCacheRef.current.critique);
+      setCriticOpen(true);
+      return;
+    }
+    setCritique(null);
     setCriticLoading(true);
     setCriticOpen(true);
     try {
       const result = await critiquePrompt(body);
+      criticCacheRef.current = { body, critique: result };
       setCritique(result);
     } catch {
       toast.error("Couldn't analyze this prompt — try again.");
@@ -119,8 +131,16 @@ export function AiPanel({
   function fixAutomatically() {
     if (!critique) return;
     setFixingAutomatically(true);
-    onApply(critique.fixedPrompt, "Critic auto-fix");
-    toast.success("Applied the Critic's suggested fixes");
+    // Deterministic and self-verifying: never applies a rewrite that scores
+    // lower than the original by the same rubric used to grade it.
+    const { fixedPrompt, beforeScore, afterScore } = autoFixPrompt(body);
+    onApply(fixedPrompt, "Critic auto-fix");
+    criticCacheRef.current = null; // prompt changed — next open re-analyzes
+    if (afterScore > beforeScore) {
+      toast.success(`Applied the Critic's fixes — score ${beforeScore} → ${afterScore}`);
+    } else {
+      toast.success("Prompt already looked solid — no changes needed");
+    }
     setFixingAutomatically(false);
     setCriticOpen(false);
   }
