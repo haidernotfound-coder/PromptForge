@@ -21,7 +21,7 @@ const PRODUCTS: Product[] = [
     tagline: "Write, organize, refine, and share prompts for ChatGPT, Claude, Gemini, and Grok.",
     icon: Sparkles,
     status: "available",
-    href: "/promptforge",
+    href: "/products/promptforge",
   },
   {
     slug: "studyforge",

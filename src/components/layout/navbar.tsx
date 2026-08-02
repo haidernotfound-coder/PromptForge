@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, Sparkles, ArrowRight, LogOut } from "lucide-react";
+import { Menu, Sparkles, ArrowRight, LogOut, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -21,7 +21,7 @@ const NAV_LINKS = [
   { href: "/about", label: "About" },
 ];
 
-export function Navbar({ session }: { session: AppSession | null }) {
+export function Navbar({ session, isAdmin = false }: { session: AppSession | null; isAdmin?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
@@ -73,10 +73,17 @@ export function Navbar({ session }: { session: AppSession | null }) {
           {session ? (
             <>
               <Button size="sm" variant="ghost" asChild>
-                <Link href="/promptforge">
+                <Link href="/products/promptforge">
                   Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
+              {isAdmin && (
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href="/admin" className="gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Admin
+                  </Link>
+                </Button>
+              )}
               <DashboardUserMenu session={session} />
             </>
           ) : (
@@ -141,10 +148,17 @@ export function Navbar({ session }: { session: AppSession | null }) {
                         {session ? (
                           <>
                             <Button asChild>
-                              <Link href="/promptforge" onClick={() => setOpen(false)}>
+                              <Link href="/products/promptforge" onClick={() => setOpen(false)}>
                                 Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
                               </Link>
                             </Button>
+                            {isAdmin && (
+                              <Button variant="outline" asChild>
+                                <Link href="/admin" onClick={() => setOpen(false)} className="gap-1.5">
+                                  <ShieldCheck className="h-4 w-4" /> Admin
+                                </Link>
+                              </Button>
+                            )}
                             <MobileSignOut session={session} onDone={() => setOpen(false)} />
                           </>
                         ) : (

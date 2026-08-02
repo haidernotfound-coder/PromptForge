@@ -32,7 +32,7 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
           </p>
           <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
             <Button size="lg" asChild>
-              <Link href={signedIn ? "/promptforge" : "/signup"}>
+              <Link href={signedIn ? "/products/promptforge" : "/signup"}>
                 {signedIn ? "Go to PromptForge" : "Get started free"} <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>

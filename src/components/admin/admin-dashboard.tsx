@@ -27,9 +27,11 @@ const fadeIn = {
 export function AdminDashboard({
   initialData,
   adminEmailConfigured,
+  showHeader = true,
 }: {
   initialData: AdminBundle;
   adminEmailConfigured: boolean;
+  showHeader?: boolean;
 }) {
   const [data, setData] = React.useState<AdminBundle>(initialData);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -60,22 +62,26 @@ export function AdminDashboard({
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-accent" />
-            <h1 className="font-display text-2xl font-semibold tracking-tight">Admin Dashboard</h1>
-          </div>
-          <p className="mt-1 text-sm text-text-muted">
-            Live usage, Groq key health, and system controls for NexPrompt.
-          </p>
-          {!adminEmailConfigured && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-brass">
-              <TriangleAlert className="h-3.5 w-3.5" />
-              You&apos;re viewing this via a database <code className="font-mono">is_admin</code> flag — no{" "}
-              <code className="font-mono">ADMIN_EMAILS</code> env var is set.
+        {showHeader ? (
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-accent" />
+              <h1 className="font-display text-2xl font-semibold tracking-tight">Admin Dashboard</h1>
+            </div>
+            <p className="mt-1 text-sm text-text-muted">
+              Live usage, Groq key health, and system controls for NexPrompt.
             </p>
-          )}
-        </div>
+            {!adminEmailConfigured && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-brass">
+                <TriangleAlert className="h-3.5 w-3.5" />
+                You&apos;re viewing this via a database <code className="font-mono">is_admin</code> flag — no{" "}
+                <code className="font-mono">ADMIN_EMAILS</code> env var is set.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-faint">
             Updated {new Date(data.generatedAt).toLocaleTimeString()}

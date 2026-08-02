@@ -23,7 +23,7 @@ const LINKS = [
   { href: "/promptforge/settings", label: "Settings", icon: Settings },
 ];
 
-const ADMIN_LINK = { href: "/promptforge/admin", label: "Admin", icon: ShieldCheck };
+const ADMIN_LINK = { href: "/admin", label: "Admin", icon: ShieldCheck };
 
 export function DashboardSidebarNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();

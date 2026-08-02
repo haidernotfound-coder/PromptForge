@@ -30,12 +30,14 @@ export default async function HomePage() {
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Button size="lg" asChild>
-              <Link href={session ? "/promptforge" : "/signup"}>
+              <Link href={session ? "/products/promptforge" : "/signup"}>
                 {session ? "Open PromptForge" : "Get started free"} <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
-              <Link href="/products/promptforge">Learn more about PromptForge</Link>
+              <Link href={session ? "/promptforge" : "/products/promptforge"}>
+                {session ? "Go to dashboard" : "Learn more about PromptForge"}
+              </Link>
             </Button>
           </div>
         </div>

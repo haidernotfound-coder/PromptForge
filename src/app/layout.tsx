@@ -14,6 +14,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Toaster } from "sonner";
 import { getAppSessionOrNull } from "@/lib/session";
+import { getAdminSession } from "@/lib/admin/session";
 
 export const metadata: Metadata = {
   title: {
@@ -37,6 +38,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getAppSessionOrNull();
+  const isAdmin = session ? (await getAdminSession()).isAdmin : false;
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="font-body antialiased min-h-screen flex flex-col">
@@ -49,7 +51,7 @@ export default async function RootLayout({
           <a href="#main-content" className="skip-link">
             Skip to content
           </a>
-          <Navbar session={session} />
+          <Navbar session={session} isAdmin={isAdmin} />
           <main id="main-content" className="flex-1">
             {children}
           </main>
