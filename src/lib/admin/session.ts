@@ -25,19 +25,23 @@ export async function getAdminSession(): Promise<AdminSession> {
   }
 
   if (session.isReal && isSupabaseConfigured()) {
-    const supabase = await getSupabaseServerClient();
-    const {
-      data: { user },
-    } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
-    if (user) {
-      const { data } = (await supabase
-        ?.from("profiles")
-        .select("is_admin")
-        .eq("id", user.id)
-        .maybeSingle()) ?? { data: null };
-      if (data?.is_admin) {
-        return { ...session, isAdmin: true };
+    try {
+      const supabase = await getSupabaseServerClient();
+      const {
+        data: { user },
+      } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
+      if (user) {
+        const { data } = (await supabase
+          ?.from("profiles")
+          .select("is_admin")
+          .eq("id", user.id)
+          .maybeSingle()) ?? { data: null };
+        if (data?.is_admin) {
+          return { ...session, isAdmin: true };
+        }
       }
+    } catch {
+      // Fall through to non-admin rather than throwing.
     }
   }
 

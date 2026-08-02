@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured } from "./config";
 
@@ -35,9 +36,17 @@ export async function updateSupabaseSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: User | null = null;
+  try {
+    const {
+      data: { user: authedUser },
+    } = await supabase.auth.getUser();
+    user = authedUser;
+  } catch {
+    // Treat an unreachable/erroring auth check as unauthenticated — the
+    // caller redirects protected paths to /login, which is the safe
+    // default here, rather than throwing and taking the request down.
+  }
 
   return { response, user };
 }

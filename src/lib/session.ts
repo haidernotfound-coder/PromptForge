@@ -21,16 +21,22 @@ function nameFromEmail(email: string) {
  *  route is reachable in demo mode). */
 export async function getAppSession(): Promise<AppSession> {
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseServerClient();
-    const {
-      data: { user },
-    } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
+    try {
+      const supabase = await getSupabaseServerClient();
+      const {
+        data: { user },
+      } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
 
-    if (user) {
-      const fullName =
-        (user.user_metadata?.full_name as string | undefined) ||
-        nameFromEmail(user.email ?? "");
-      return { name: fullName, email: user.email ?? "", isReal: true };
+      if (user) {
+        const fullName =
+          (user.user_metadata?.full_name as string | undefined) ||
+          nameFromEmail(user.email ?? "");
+        return { name: fullName, email: user.email ?? "", isReal: true };
+      }
+    } catch {
+      // Supabase reachable-but-erroring (or transiently unreachable) —
+      // fall through to the demo session rather than throwing through the
+      // Server Component tree and tripping the app's error boundary.
     }
   }
 
@@ -45,18 +51,22 @@ export async function getAppSession(): Promise<AppSession> {
  *  route-protected pages do. */
 export async function getAppSessionOrNull(): Promise<AppSession | null> {
   if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseServerClient();
-    const {
-      data: { user },
-    } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
+    try {
+      const supabase = await getSupabaseServerClient();
+      const {
+        data: { user },
+      } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
 
-    if (user) {
-      const fullName =
-        (user.user_metadata?.full_name as string | undefined) ||
-        nameFromEmail(user.email ?? "");
-      return { name: fullName, email: user.email ?? "", isReal: true };
+      if (user) {
+        const fullName =
+          (user.user_metadata?.full_name as string | undefined) ||
+          nameFromEmail(user.email ?? "");
+        return { name: fullName, email: user.email ?? "", isReal: true };
+      }
+      return null;
+    } catch {
+      // Fall through to demo mode below rather than throwing.
     }
-    return null;
   }
 
   const demo = await getDemoSession();
