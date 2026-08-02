@@ -55,7 +55,7 @@ export function Footer() {
         </div>
         <div className="temper-line mt-10" />
         <p className="mt-6 text-xs text-text-faint">
-          © {new Date().getFullYear()} NexPrompt. Built for people who take their prompts seriously.
+          © {new Date().getFullYear()} NexPrompt. Building the future of AI productivity.
         </p>
       </div>
     </footer>
