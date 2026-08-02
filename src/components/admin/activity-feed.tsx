@@ -7,6 +7,14 @@ import {
   Copy,
   FilePlus2,
   AlertCircle,
+  Code2,
+  Bug,
+  Gauge,
+  BookMarked,
+  Languages,
+  FlaskConical,
+  FileText,
+  ClipboardCheck,
 } from "lucide-react";
 import type { AdminEvent } from "@/lib/admin/store";
 
@@ -21,6 +29,15 @@ const EVENT_META: Record<string, { label: string; icon: typeof Sparkles }> = {
   "prompt.copied": { label: "copied a prompt", icon: Copy },
   "prompt.created": { label: "created a prompt", icon: FilePlus2 },
   "ai.error": { label: "hit an AI provider error", icon: AlertCircle },
+  "codeforge.generate": { label: "generated code in CodeForge", icon: Code2 },
+  "codeforge.fix": { label: "fixed a bug in CodeForge", icon: Bug },
+  "codeforge.optimize": { label: "optimized code in CodeForge", icon: Gauge },
+  "codeforge.explain": { label: "explained code in CodeForge", icon: BookMarked },
+  "codeforge.convert": { label: "converted code in CodeForge", icon: Languages },
+  "codeforge.tests": { label: "generated unit tests in CodeForge", icon: FlaskConical },
+  "codeforge.docs": { label: "generated docs in CodeForge", icon: FileText },
+  "codeforge.review": { label: "reviewed code in CodeForge", icon: ClipboardCheck },
+  "codeforge.chat": { label: "chatted with CodeForge AI", icon: MessageSquareText },
 };
 
 function timeAgo(iso: string): string {
@@ -34,12 +51,20 @@ function timeAgo(iso: string): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
-export function ActivityFeed({ events }: { events: AdminEvent[] }) {
+export function ActivityFeed({
+  events,
+  title = "Live activity",
+  description = "Most recent user actions across the app.",
+}: {
+  events: AdminEvent[];
+  title?: string;
+  description?: string;
+}) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Live activity</CardTitle>
-        <CardDescription>Most recent user actions across the app.</CardDescription>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (

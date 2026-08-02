@@ -1,14 +1,16 @@
 "use client";
 
-import { ShieldCheck, Sparkles, GraduationCap, Code2, ImageIcon, Lock } from "lucide-react";
+import * as React from "react";
+import { ShieldCheck, Sparkles, GraduationCap, Code2, ImageIcon, Lock, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { AdminBundle } from "@/components/admin/types";
 import { AdminDashboard } from "@/components/admin/admin-dashboard";
+import { CodeForgeAdminPanel } from "@/components/admin/codeforge-admin-panel";
 
-const OTHER_PRODUCTS = [
+const COMING_SOON_PRODUCTS = [
   { slug: "studyforge", name: "StudyForge", icon: GraduationCap },
-  { slug: "codeforge", name: "CodeForge", icon: Code2 },
   { slug: "imageforge", name: "ImageForge", icon: ImageIcon },
 ];
 
@@ -19,6 +21,25 @@ export function PlatformAdminDashboard({
   initialData: AdminBundle;
   adminEmailConfigured: boolean;
 }) {
+  const [data, setData] = React.useState<AdminBundle>(initialData);
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const refresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/admin/overview", { cache: "no-store" });
+      if (res.ok) {
+        const next = (await res.json()) as AdminBundle;
+        setData(next);
+      }
+    } catch {
+      // Keep showing the last good snapshot — a failed poll shouldn't
+      // blank the dashboard.
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   return (
     <div className="space-y-8">
       <div>
@@ -36,7 +57,10 @@ export function PlatformAdminDashboard({
           <TabsTrigger value="promptforge" className="gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> PromptForge
           </TabsTrigger>
-          {OTHER_PRODUCTS.map((p) => (
+          <TabsTrigger value="codeforge" className="gap-1.5">
+            <Code2 className="h-3.5 w-3.5" /> CodeForge
+          </TabsTrigger>
+          {COMING_SOON_PRODUCTS.map((p) => (
             <TabsTrigger key={p.slug} value={p.slug} disabled className="gap-1.5 opacity-50">
               <p.icon className="h-3.5 w-3.5" /> {p.name}
               <Badge variant="slate" className="ml-1 gap-1 text-[10px]">
@@ -49,10 +73,28 @@ export function PlatformAdminDashboard({
         <TabsContent value="promptforge">
           <div className="pt-4">
             <AdminDashboard
-              initialData={initialData}
+              initialData={data}
               adminEmailConfigured={adminEmailConfigured}
               showHeader={false}
             />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="codeforge">
+          <div className="pt-4 space-y-4">
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={refresh}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+            <CodeForgeAdminPanel data={data} onChanged={refresh} />
           </div>
         </TabsContent>
       </Tabs>

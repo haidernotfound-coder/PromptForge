@@ -29,7 +29,16 @@ export type EventType =
   | "recipe.used"
   | "prompt.copied"
   | "prompt.created"
-  | "ai.error";
+  | "ai.error"
+  | "codeforge.generate"
+  | "codeforge.fix"
+  | "codeforge.optimize"
+  | "codeforge.explain"
+  | "codeforge.convert"
+  | "codeforge.tests"
+  | "codeforge.docs"
+  | "codeforge.review"
+  | "codeforge.chat";
 
 export interface AdminEvent {
   id: string;
@@ -45,6 +54,7 @@ export interface SystemSettings {
   recipeForgeEnabled: boolean;
   criticEnabled: boolean;
   maintenanceMode: boolean;
+  codeforgeEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -52,6 +62,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   recipeForgeEnabled: true,
   criticEnabled: true,
   maintenanceMode: false,
+  codeforgeEnabled: true,
 };
 
 // --- In-memory fallback (demo mode / no Supabase) --------------------------
@@ -155,7 +166,7 @@ export async function getRecentEvents(limit = 500): Promise<AdminEvent[]> {
 // --- Groq key usage ------------------------------------------------------
 
 export interface RecordGroqUsageInput {
-  pool: "ai" | "forge_ai";
+  pool: "ai" | "forge_ai" | "codeforge";
   keyLabel: string;
   success: boolean;
 }
@@ -197,7 +208,7 @@ export async function recordGroqUsage(input: RecordGroqUsageInput): Promise<void
 }
 
 export interface GroqKeyUsageSnapshot {
-  pool: "ai" | "forge_ai";
+  pool: "ai" | "forge_ai" | "codeforge";
   keyLabel: string;
   requestCount: number;
   successCount: number;
@@ -207,7 +218,7 @@ export interface GroqKeyUsageSnapshot {
 /** Today's usage for every key in `poolKeyLabels` (zero-filled for keys
  *  that haven't been used yet today). */
 export async function getGroqUsageToday(
-  poolKeyLabels: { pool: "ai" | "forge_ai"; keyLabel: string }[]
+  poolKeyLabels: { pool: "ai" | "forge_ai" | "codeforge"; keyLabel: string }[]
 ): Promise<GroqKeyUsageSnapshot[]> {
   const usageDate = todayKey();
 
@@ -256,7 +267,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       const supabase = await getSupabaseServerClient();
       const { data, error } = (await supabase
         ?.from("system_settings")
-        .select("forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode")
+        .select("forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled")
         .eq("id", true)
         .maybeSingle()) ?? { data: null, error: null };
       if (!error && data) {
@@ -265,6 +276,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
           recipeForgeEnabled: data.recipe_forge_enabled,
           criticEnabled: data.critic_enabled,
           maintenanceMode: data.maintenance_mode,
+          codeforgeEnabled: data.codeforge_enabled ?? true,
         };
       }
     } catch {
@@ -285,9 +297,10 @@ export async function updateSystemSettings(patch: Partial<SystemSettings>): Prom
           ...(patch.recipeForgeEnabled !== undefined ? { recipe_forge_enabled: patch.recipeForgeEnabled } : {}),
           ...(patch.criticEnabled !== undefined ? { critic_enabled: patch.criticEnabled } : {}),
           ...(patch.maintenanceMode !== undefined ? { maintenance_mode: patch.maintenanceMode } : {}),
+          ...(patch.codeforgeEnabled !== undefined ? { codeforge_enabled: patch.codeforgeEnabled } : {}),
         })
         .eq("id", true)
-        .select("forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode")
+        .select("forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled")
         .maybeSingle()) ?? { data: null, error: null };
       if (!error && data) {
         return {
@@ -295,6 +308,7 @@ export async function updateSystemSettings(patch: Partial<SystemSettings>): Prom
           recipeForgeEnabled: data.recipe_forge_enabled,
           criticEnabled: data.critic_enabled,
           maintenanceMode: data.maintenance_mode,
+          codeforgeEnabled: data.codeforge_enabled ?? true,
         };
       }
     } catch {

@@ -33,7 +33,7 @@ export default async function CodeForgeSettingsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>Provider status</CardTitle>
-            <CardDescription>CodeForge's own Groq key pool (independent of PromptForge and Forge AI).</CardDescription>
+            <CardDescription>CodeForge&apos;s own Groq key pool (independent of PromptForge and Forge AI).</CardDescription>
           </div>
           <Badge variant={configured ? "success" : "brass"}>{configured ? "Live" : "Demo mode"}</Badge>
         </CardHeader>

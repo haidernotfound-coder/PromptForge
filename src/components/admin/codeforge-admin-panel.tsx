@@ -69,7 +69,7 @@ export function CodeForgeAdminPanel({
       <p className="-mt-3 text-sm text-text-muted">
         Generate, Fix Bugs, Optimize, Explain, Convert, Unit Tests, Documentation, Review, and AI
         Coding Chat — all running on their own 7-key Groq fallback pool, fully isolated from
-        PromptForge's and Forge AI's pools.
+        PromptForge&apos;s and Forge AI&apos;s pools.
       </p>
 
       <Card>

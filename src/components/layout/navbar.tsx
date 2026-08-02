@@ -18,6 +18,7 @@ import type { AppSession } from "@/lib/session";
 const NAV_LINKS = [
   { href: "/#products", label: "Products" },
   { href: "/products/promptforge", label: "PromptForge" },
+  { href: "/products/codeforge", label: "CodeForge" },
   { href: "/about", label: "About" },
 ];
 
@@ -75,6 +76,11 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
               <Button size="sm" variant="ghost" asChild>
                 <Link href="/products/promptforge">
                   Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+              <Button size="sm" variant="ghost" asChild>
+                <Link href="/products/codeforge">
+                  Open CodeForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
               {isAdmin && (
@@ -150,6 +156,11 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
                             <Button asChild>
                               <Link href="/products/promptforge" onClick={() => setOpen(false)}>
                                 Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                            <Button variant="outline" asChild>
+                              <Link href="/products/codeforge" onClick={() => setOpen(false)}>
+                                Open CodeForge <ArrowRight className="h-3.5 w-3.5" />
                               </Link>
                             </Button>
                             {isAdmin && (

@@ -10,12 +10,18 @@ function usageTone(percentUsed: number): string {
   return "bg-accent";
 }
 
-function PoolCard({ pool }: { pool: GroqPoolStatus }) {
+const POOL_TITLES: Record<GroqPoolStatus["pool"], string> = {
+  ai: "Prompt AI actions",
+  forge_ai: "Forge AI chat",
+  codeforge: "CodeForge tools + chat",
+};
+
+export function PoolCard({ pool }: { pool: GroqPoolStatus }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
         <div>
-          <CardTitle className="text-base">{pool.pool === "ai" ? "Prompt AI actions" : "Forge AI chat"}</CardTitle>
+          <CardTitle className="text-base">{POOL_TITLES[pool.pool]}</CardTitle>
           <CardDescription>{pool.name}</CardDescription>
         </div>
         <Badge variant={pool.configured ? "success" : "slate"}>
@@ -76,9 +82,9 @@ export function GroqMonitor({ data }: { data: GroqMonitorData }) {
         <CardHeader className="flex flex-row items-center gap-2 space-y-0">
           <Layers className="h-4 w-4 text-accent" />
           <div>
-            <CardTitle className="text-base">Combined across both fallback pools</CardTitle>
+            <CardTitle className="text-base">Combined across all fallback pools</CardTitle>
             <CardDescription>
-              Prompt AI actions and Forge AI chat use fully independent key pools — this is their sum.
+              Prompt AI actions, Forge AI chat, and CodeForge each use fully independent key pools — this is their sum.
             </CardDescription>
           </div>
         </CardHeader>
@@ -102,7 +108,7 @@ export function GroqMonitor({ data }: { data: GroqMonitorData }) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {data.pools.map((pool) => (
           <PoolCard key={pool.pool} pool={pool} />
         ))}
