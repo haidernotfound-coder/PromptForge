@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { EditorToolbar, applyWrap, extractVariables, type WrapKind } from "@/components/prompts/editor-toolbar";
 import { AiPanel } from "@/components/prompts/ai-panel";
+import { RecipeForge } from "@/components/prompts/recipe-forge";
 import { TagMultiselect } from "@/components/prompts/tag-multiselect";
 import { TagBadge } from "@/components/prompts/tag-badge";
 import { FolderSelect } from "@/components/prompts/folder-select";
@@ -209,7 +210,18 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
             {dirty && !isNew && " · unsaved changes"}
           </span>
         </div>
-        <EditorToolbar onAction={handleFormat} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <EditorToolbar onAction={handleFormat} />
+          <RecipeForge
+            hasExistingContent={body.trim().length > 0}
+            onInsert={(recipeBody) => {
+              setBody(recipeBody);
+              if (!isNew) {
+                updatePrompt(prompt!.id, { body: recipeBody }, { snapshot: true, note: "Inserted from Recipe Forge" });
+              }
+            }}
+          />
+        </div>
         <Textarea
           id="prompt-body"
           ref={textareaRef}

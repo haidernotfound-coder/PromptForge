@@ -2,7 +2,9 @@
 
 import { motion } from "framer-motion";
 import {
+  BookOpen,
   FolderTree,
+  Gauge,
   History,
   SearchCode,
   Share2,
@@ -28,6 +30,18 @@ const FEATURES = [
     title: "AI-assisted tempering",
     description:
       "Improve, expand, shorten, or rewrite any prompt in one click — powered by the models you already trust.",
+  },
+  {
+    icon: Gauge,
+    title: "AI Prompt Critic",
+    description:
+      "Score any prompt from 0–100 with concrete strengths, weaknesses, and suggestions — then apply a guaranteed improvement in one click.",
+  },
+  {
+    icon: BookOpen,
+    title: "Recipe Forge",
+    description:
+      "Browse professionally structured prompt recipes across Writing, Business, Coding, Creative, Education, and Content — favorite the ones you reuse, and drop them straight into the editor.",
   },
   {
     icon: History,
