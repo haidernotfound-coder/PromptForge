@@ -53,7 +53,7 @@ export function CollectionGallery() {
             <Card key={collection.id} className="group relative flex flex-col gap-2 p-4">
               <div className="flex items-start justify-between gap-2">
                 <Link
-                  href={`/dashboard/collections/${collection.id}`}
+                  href={`/promptforge/collections/${collection.id}`}
                   className="min-w-0 flex-1 font-display text-sm font-semibold leading-tight hover:text-accent"
                 >
                   <span className="line-clamp-1">{collection.name}</span>
@@ -77,7 +77,7 @@ export function CollectionGallery() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              <Link href={`/dashboard/collections/${collection.id}`} className="flex-1">
+              <Link href={`/promptforge/collections/${collection.id}`} className="flex-1">
                 <p className="line-clamp-2 text-xs text-text-muted">
                   {collection.description || "No description yet."}
                 </p>

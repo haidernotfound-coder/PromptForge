@@ -18,7 +18,7 @@ export function CtaSection({ signedIn }: { signedIn: boolean }) {
         </p>
         <div className="mt-8 flex justify-center">
           <Button size="lg" asChild>
-            <Link href={signedIn ? "/dashboard" : "/signup"}>
+            <Link href={signedIn ? "/promptforge" : "/signup"}>
               {signedIn ? "Go to dashboard" : "Start forging"} <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

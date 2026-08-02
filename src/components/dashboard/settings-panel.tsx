@@ -248,7 +248,7 @@ function SyncTab() {
         <p className="text-sm text-text-muted">
           NexPrompt saves to this browser&apos;s local storage on every change, and mirrors it live
           to any other NexPrompt tab open in the same browser — try it by opening{" "}
-          <span className="font-medium text-text">/dashboard/prompts</span> in a second tab and editing
+          <span className="font-medium text-text">/promptforge/prompts</span> in a second tab and editing
           a prompt in each.
         </p>
       )}

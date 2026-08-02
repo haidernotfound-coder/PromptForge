@@ -23,7 +23,7 @@ export function RecentPrompts() {
           <CardDescription>Your most recently updated work.</CardDescription>
         </div>
         <Button asChild variant="ghost" size="sm" className="gap-1">
-          <Link href="/dashboard/prompts">
+          <Link href="/promptforge/prompts">
             View all <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </Button>
@@ -39,7 +39,7 @@ export function RecentPrompts() {
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <p className="text-sm text-text-muted">No prompts yet.</p>
             <Button asChild size="sm" className="gap-1.5">
-              <Link href="/dashboard/prompts/new">
+              <Link href="/promptforge/prompts/new">
                 <Plus className="h-4 w-4" /> Create your first prompt
               </Link>
             </Button>
@@ -49,7 +49,7 @@ export function RecentPrompts() {
             {recent.map((p) => (
               <li key={p.id}>
                 <Link
-                  href={`/dashboard/prompts/${p.id}`}
+                  href={`/promptforge/prompts/${p.id}`}
                   className="flex items-center justify-between gap-3 py-2.5 text-sm hover:text-accent"
                 >
                   <span className="truncate font-medium">{p.title}</span>

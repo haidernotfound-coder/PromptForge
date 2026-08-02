@@ -12,7 +12,11 @@ import { updateSupabaseSession } from "@/lib/supabase/middleware";
  * long visit. When Supabase isn't configured, it falls back to the Phase
  * 1–6 demo cookie check so the app keeps working with zero setup.
  */
-const PROTECTED_PATHS = ["/dashboard", "/prompts", "/settings"];
+// One shared auth system across the whole NexPrompt platform. Each product
+// lives under its own top-level route (e.g. /promptforge, /studyforge) and
+// gets added here as it ships — the landing page and any public marketing
+// routes stay unprotected.
+const PROTECTED_PATHS = ["/promptforge"];
 
 export async function middleware(request: NextRequest) {
   const isProtected = PROTECTED_PATHS.some((path) =>

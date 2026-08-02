@@ -38,7 +38,7 @@ export function TemplateGallery() {
       tagNames: template.tagNames,
     });
     toast.success("Prompt created from template");
-    router.push(`/dashboard/prompts/${created.id}`);
+    router.push(`/promptforge/prompts/${created.id}`);
   }
 
   return (

@@ -51,7 +51,7 @@ export function CollectionSidebarList() {
 
       <div className="mt-1 flex flex-col gap-0.5">
         {sorted.map((collection) => {
-          const active = pathname === `/dashboard/collections/${collection.id}`;
+          const active = pathname === `/promptforge/collections/${collection.id}`;
           return (
             <div
               key={collection.id}
@@ -61,7 +61,7 @@ export function CollectionSidebarList() {
               )}
             >
               <Link
-                href={`/dashboard/collections/${collection.id}`}
+                href={`/promptforge/collections/${collection.id}`}
                 className="flex flex-1 min-w-0 items-center gap-2 py-1.5 pl-2"
               >
                 <FolderKanban className="h-3.5 w-3.5 shrink-0" />

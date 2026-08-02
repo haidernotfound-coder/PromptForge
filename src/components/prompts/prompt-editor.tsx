@@ -77,7 +77,7 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
       const created = addPrompt({ title, body, model: modelValue, folderId, tagIds });
       trackEvent("prompt.created", { promptId: created.id });
       toast.success("Prompt created");
-      router.push(`/dashboard/prompts/${created.id}`);
+      router.push(`/promptforge/prompts/${created.id}`);
     } else {
       updatePrompt(prompt!.id, { title, body, model: modelValue as Prompt["model"], folderId, tagIds }, { snapshot: true });
       setDirty(false);
@@ -148,7 +148,7 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
                 const copy = duplicatePrompt(prompt!.id);
                 if (copy) {
                   toast.success("Prompt duplicated");
-                  router.push(`/dashboard/prompts/${copy.id}`);
+                  router.push(`/promptforge/prompts/${copy.id}`);
                 }
               }}
             >
@@ -307,7 +307,7 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
           onConfirm={() => {
             deletePrompt(prompt!.id);
             toast.success("Prompt deleted");
-            router.push("/dashboard/prompts");
+            router.push("/promptforge/prompts");
           }}
         />
       )}

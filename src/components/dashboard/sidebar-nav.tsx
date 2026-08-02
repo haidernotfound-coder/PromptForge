@@ -15,15 +15,15 @@ import {
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/prompts", label: "Prompts", icon: Library },
-  { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate },
-  { href: "/dashboard/collections", label: "Collections", icon: FolderKanban },
-  { href: "/dashboard/favorites", label: "Favorites", icon: Star },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/promptforge", label: "Overview", icon: LayoutDashboard },
+  { href: "/promptforge/prompts", label: "Prompts", icon: Library },
+  { href: "/promptforge/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/promptforge/collections", label: "Collections", icon: FolderKanban },
+  { href: "/promptforge/favorites", label: "Favorites", icon: Star },
+  { href: "/promptforge/settings", label: "Settings", icon: Settings },
 ];
 
-const ADMIN_LINK = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+const ADMIN_LINK = { href: "/promptforge/admin", label: "Admin", icon: ShieldCheck };
 
 export function DashboardSidebarNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();

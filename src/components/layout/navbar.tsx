@@ -12,6 +12,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import type { AppSession } from "@/lib/session";
 
 const NAV_LINKS = [
+  { href: "/#products", label: "Products" },
   { href: "/#features", label: "Features" },
   { href: "/#workflow", label: "Workflow" },
   { href: "/pricing", label: "Pricing" },
@@ -68,7 +69,7 @@ export function Navbar({ session }: { session: AppSession | null }) {
           <ThemeToggle />
           {session ? (
             <Button size="sm" asChild>
-              <Link href="/dashboard">Go to dashboard</Link>
+              <Link href="/promptforge">Go to PromptForge</Link>
             </Button>
           ) : (
             <>
@@ -131,8 +132,8 @@ export function Navbar({ session }: { session: AppSession | null }) {
                       <div className="mt-auto flex flex-col gap-2">
                         {session ? (
                           <Button asChild>
-                            <Link href="/dashboard" onClick={() => setOpen(false)}>
-                              Go to dashboard
+                            <Link href="/promptforge" onClick={() => setOpen(false)}>
+                              Go to PromptForge
                             </Link>
                           </Button>
                         ) : (

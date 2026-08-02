@@ -23,12 +23,12 @@ export default function GlobalErrorBoundary({
       </h1>
       <p className="mt-3 text-text-muted max-w-sm">
         An unexpected error interrupted this page. Your prompts and folders
-        are safe — try again, or head back to the dashboard.
+        are safe — try again, or head back home.
       </p>
       <div className="mt-8 flex gap-3">
         <Button onClick={() => reset()}>Try again</Button>
         <Button variant="outline" asChild>
-          <a href="/dashboard">Back to dashboard</a>
+          <a href="/">Back to home</a>
         </Button>
       </div>
     </div>

@@ -53,7 +53,7 @@ export function TagSidebarList() {
 
       <div className="mt-1 flex flex-col gap-0.5">
         {sorted.map((tag) => {
-          const active = pathname === "/dashboard/prompts" && activeTag === tag.id;
+          const active = pathname === "/promptforge/prompts" && activeTag === tag.id;
           return (
             <div
               key={tag.id}
@@ -62,7 +62,7 @@ export function TagSidebarList() {
                 active ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface hover:text-text"
               )}
             >
-              <Link href={`/dashboard/prompts?tag=${tag.id}`} className="flex flex-1 min-w-0 items-center gap-2 py-1.5 pl-2">
+              <Link href={`/promptforge/prompts?tag=${tag.id}`} className="flex flex-1 min-w-0 items-center gap-2 py-1.5 pl-2">
                 <TagColorDot color={tag.color} />
                 <span className="truncate">{tag.name}</span>
                 {(counts.get(tag.id) ?? 0) > 0 && (

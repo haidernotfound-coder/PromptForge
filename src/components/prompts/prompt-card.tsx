@@ -63,12 +63,12 @@ export function PromptCard({ prompt, view = "grid" }: { prompt: Prompt; view?: "
         "group relative flex cursor-pointer flex-col gap-3 p-4 transition-shadow hover:shadow-md",
         view === "list" && "sm:flex-row sm:items-center sm:gap-4"
       )}
-      onClick={() => router.push(`/dashboard/prompts/${prompt.id}`)}
+      onClick={() => router.push(`/promptforge/prompts/${prompt.id}`)}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <Link
-            href={`/dashboard/prompts/${prompt.id}`}
+            href={`/promptforge/prompts/${prompt.id}`}
             onClick={(e) => e.stopPropagation()}
             className="font-display text-sm font-semibold leading-tight text-text hover:text-accent line-clamp-1"
           >
@@ -110,7 +110,7 @@ export function PromptCard({ prompt, view = "grid" }: { prompt: Prompt; view?: "
                     const copy = duplicatePrompt(prompt.id);
                     if (copy) {
                       toast.success("Prompt duplicated");
-                      router.push(`/dashboard/prompts/${copy.id}`);
+                      router.push(`/promptforge/prompts/${copy.id}`);
                     }
                   }}
                 >

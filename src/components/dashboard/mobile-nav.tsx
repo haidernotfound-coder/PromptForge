@@ -28,7 +28,7 @@ export function DashboardMobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
           <DashboardBrand />
           <DashboardSidebarNav isAdmin={isAdmin} />
           <Button asChild size="sm" className="gap-1.5">
-            <Link href="/dashboard/prompts/new">
+            <Link href="/promptforge/prompts/new">
               <Plus className="h-4 w-4" /> New prompt
             </Link>
           </Button>

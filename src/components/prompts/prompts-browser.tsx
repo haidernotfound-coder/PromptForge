@@ -101,7 +101,7 @@ export function PromptsBrowser({
           <p className="mt-1 text-sm text-text-muted">{description}</p>
         </div>
         <Button asChild size="sm" className="gap-1.5">
-          <Link href="/dashboard/prompts/new">
+          <Link href="/promptforge/prompts/new">
             <Plus className="h-4 w-4" /> New prompt
           </Link>
         </Button>
@@ -256,7 +256,7 @@ function EmptyState({ favoritesOnly, hasQuery }: { favoritesOnly: boolean; hasQu
       </div>
       {!hasQuery && (
         <Button asChild size="sm" className="gap-1.5 mt-1">
-          <Link href="/dashboard/prompts/new">
+          <Link href="/promptforge/prompts/new">
             <Plus className="h-4 w-4" /> New prompt
           </Link>
         </Button>

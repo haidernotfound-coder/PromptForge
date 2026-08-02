@@ -122,7 +122,7 @@ function FolderRow({
   onRename: (n: FolderNode) => void;
   onDelete: (n: FolderNode) => void;
 }) {
-  const active = pathname === "/dashboard/prompts" && activeFolder === node.id;
+  const active = pathname === "/promptforge/prompts" && activeFolder === node.id;
   const count = counts.get(node.id) ?? 0;
 
   return (
@@ -135,7 +135,7 @@ function FolderRow({
         style={{ paddingLeft: `${8 + node.depth * 14}px` }}
       >
         <Link
-          href={`/dashboard/prompts?folder=${node.id}`}
+          href={`/promptforge/prompts?folder=${node.id}`}
           className="flex flex-1 min-w-0 items-center gap-2 py-1.5"
         >
           <FolderClosed className="h-3.5 w-3.5 shrink-0" />
