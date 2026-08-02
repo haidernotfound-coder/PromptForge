@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Hero } from "@/components/marketing/hero";
 import { FeatureGrid } from "@/components/marketing/feature-grid";
 import { WorkflowSection } from "@/components/marketing/workflow-section";
 import { CtaSection } from "@/components/marketing/cta-section";
+import { Button } from "@/components/ui/button";
 import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -18,13 +19,21 @@ export default async function PromptForgeProductPage() {
   const session = await getAppSessionOrNull();
   return (
     <>
-      <div className="container pt-10">
+      <div className="container flex items-center justify-between pt-8">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-muted hover:text-text transition-colors"
+          className="group inline-flex items-center gap-1.5 text-sm font-medium text-text-faint transition-colors hover:text-text"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to NexPrompt
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+          NexPrompt
         </Link>
+        {session && (
+          <Button size="sm" variant="outline" asChild>
+            <Link href="/promptforge" className="gap-1.5">
+              Go to dashboard <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        )}
       </div>
       <Hero signedIn={!!session} />
       <FeatureGrid />

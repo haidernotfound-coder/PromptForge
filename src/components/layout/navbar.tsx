@@ -2,13 +2,17 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, Sparkles } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, Sparkles, ArrowRight, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { DashboardUserMenu } from "@/components/dashboard/user-menu";
 import { cn } from "@/lib/utils";
 import * as Dialog from "@radix-ui/react-dialog";
+import { logoutDemo } from "@/lib/demo-auth";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useStore } from "@/lib/store";
 import type { AppSession } from "@/lib/session";
 
 const NAV_LINKS = [
@@ -67,9 +71,14 @@ export function Navbar({ session }: { session: AppSession | null }) {
         <div className="hidden md:flex items-center gap-2">
           <ThemeToggle />
           {session ? (
-            <Button size="sm" asChild>
-              <Link href="/">Go to dashboard</Link>
-            </Button>
+            <>
+              <Button size="sm" variant="ghost" asChild>
+                <Link href="/promptforge">
+                  Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+              <DashboardUserMenu session={session} />
+            </>
           ) : (
             <>
               <Button variant="ghost" size="sm" asChild>
@@ -130,11 +139,14 @@ export function Navbar({ session }: { session: AppSession | null }) {
                       </nav>
                       <div className="mt-auto flex flex-col gap-2">
                         {session ? (
-                          <Button asChild>
-                            <Link href="/" onClick={() => setOpen(false)}>
-                              Go to dashboard
-                            </Link>
-                          </Button>
+                          <>
+                            <Button asChild>
+                              <Link href="/promptforge" onClick={() => setOpen(false)}>
+                                Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                            <MobileSignOut session={session} onDone={() => setOpen(false)} />
+                          </>
                         ) : (
                           <>
                             <Button variant="outline" asChild>
@@ -159,5 +171,28 @@ export function Navbar({ session }: { session: AppSession | null }) {
         </div>
       </div>
     </header>
+  );
+}
+
+function MobileSignOut({ session, onDone }: { session: AppSession; onDone: () => void }) {
+  const router = useRouter();
+
+  async function signOut() {
+    if (session.isReal) {
+      const supabase = getSupabaseBrowserClient();
+      await supabase?.auth.signOut();
+      useStore.getState().clearWorkspace();
+    } else {
+      logoutDemo();
+    }
+    onDone();
+    router.push("/");
+    router.refresh();
+  }
+
+  return (
+    <Button variant="outline" className="gap-2 text-danger hover:text-danger" onClick={signOut}>
+      <LogOut className="h-4 w-4" /> Sign out
+    </Button>
   );
 }
