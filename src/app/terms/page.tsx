@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Terms of Service",
-  description: "The terms governing your use of PromptForge.",
+  description: "The terms governing your use of NexPrompt.",
   alternates: { canonical: "/terms" },
 };
 
@@ -15,8 +15,8 @@ export default function TermsPage() {
       <div className="mt-10 space-y-10 text-text-muted leading-relaxed [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-text [&_h2]:mb-3 [&_p]:mb-3 [&_li]:mb-1.5">
         <section>
           <p>
-            These Terms of Service (&quot;Terms&quot;) govern your access to and use of PromptForge
-            (&quot;PromptForge,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), including our website and
+            These Terms of Service (&quot;Terms&quot;) govern your access to and use of NexPrompt
+            (&quot;NexPrompt,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), including our website and
             application (together, the &quot;Service&quot;). By creating an account or otherwise using
             the Service, you agree to be bound by these Terms. If you don&apos;t agree, please don&apos;t
             use the Service.
@@ -24,10 +24,10 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>1. Who can use PromptForge</h2>
+          <h2>1. Who can use NexPrompt</h2>
           <p>
             You must be at least 16 years old, or the age of digital consent in your jurisdiction if
-            higher, to use the Service. By using PromptForge, you represent that you meet this
+            higher, to use the Service. By using NexPrompt, you represent that you meet this
             requirement and that you have the authority to agree to these Terms — on your own behalf,
             or on behalf of an organization you represent.
           </p>
@@ -47,7 +47,7 @@ export default function TermsPage() {
           <h2>3. Your content</h2>
           <p>
             &quot;Your Content&quot; means the prompts, prompt bodies, titles, folder and tag names,
-            collections, and any other material you create, upload, or store in PromptForge. You retain
+            collections, and any other material you create, upload, or store in NexPrompt. You retain
             all ownership rights in Your Content. We claim no ownership over it.
           </p>
           <p>
@@ -68,7 +68,7 @@ export default function TermsPage() {
         <section>
           <h2>4. Public sharing</h2>
           <p>
-            PromptForge lets you mark individual prompts or collections as public, which generates a
+            NexPrompt lets you mark individual prompts or collections as public, which generates a
             shareable link viewable by anyone who has it, without needing an account. You control this
             setting for each item and can revoke public access at any time. We&apos;re not responsible for
             content you choose to make public, or for what a recipient of a share link does with it
@@ -79,7 +79,7 @@ export default function TermsPage() {
         <section>
           <h2>5. AI features</h2>
           <p>
-            PromptForge&apos;s AI assist features (Improve, Rewrite, Expand, Shorten) may send the text of
+            NexPrompt&apos;s AI assist features (Improve, Rewrite, Expand, Shorten) may send the text of
             the prompt you&apos;re editing to a third-party AI provider to generate a suggested result nothing
             is applied to your saved prompt unless you choose to accept it. Suggestions are generated
             automatically and may be inaccurate, irrelevant, or unsuitable for your purpose; review any
@@ -125,7 +125,7 @@ export default function TermsPage() {
         <section>
           <h2>9. Limitation of liability</h2>
           <p>
-            To the maximum extent permitted by law, PromptForge and its team will not be liable for any
+            To the maximum extent permitted by law, NexPrompt and its team will not be liable for any
             indirect, incidental, special, consequential, or punitive damages, or any loss of data,
             revenue, or profits, arising from your use of or inability to use the Service, even if we
             were advised of the possibility of such damages. Our total liability for any claim arising
@@ -147,7 +147,7 @@ export default function TermsPage() {
         <section>
           <h2>11. Governing law</h2>
           <p>
-            These Terms are governed by the laws of the jurisdiction in which PromptForge is
+            These Terms are governed by the laws of the jurisdiction in which NexPrompt is
             established, without regard to conflict-of-law principles, unless applicable local law
             requires otherwise.
           </p>

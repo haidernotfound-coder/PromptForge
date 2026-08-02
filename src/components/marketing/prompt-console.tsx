@@ -84,7 +84,7 @@ export function PromptConsole() {
         <div className="mt-4 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs text-text-faint">
             <Sparkles className="h-3.5 w-3.5 text-accent" />
-            {isRefined ? "Tempered by PromptForge AI" : "Ready to temper"}
+            {isRefined ? "Tempered by NexPrompt AI" : "Ready to temper"}
           </div>
           <button
             type="button"

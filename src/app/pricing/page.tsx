@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export const metadata = {
   title: "Pricing",
   description:
-    "Simple, transparent pricing for PromptForge — from a free tier for solo prompt engineers to team plans with shared collections and collaboration.",
+    "Simple, transparent pricing for NexPrompt — from a free tier for solo prompt engineers to team plans with shared collections and collaboration.",
   alternates: { canonical: "/pricing" },
 };
 

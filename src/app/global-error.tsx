@@ -32,7 +32,7 @@ export default function GlobalError({
         }}
       >
         <h1 style={{ fontSize: "1.75rem", fontWeight: 600 }}>
-          PromptForge hit a snag
+          NexPrompt hit a snag
         </h1>
         <p style={{ marginTop: "0.75rem", color: "#a1a1aa", maxWidth: 380 }}>
           A critical error occurred while loading the app. Reloading usually

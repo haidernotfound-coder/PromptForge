@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
         <CardHeader>
           <CardTitle>Password reset unavailable</CardTitle>
           <CardDescription>
-            PromptForge is running in demo mode — there&apos;s no real account system, so there&apos;s
+            NexPrompt is running in demo mode — there&apos;s no real account system, so there&apos;s
             no password to reset. Use &quot;Continue with demo account&quot; on the sign-in page instead.
           </CardDescription>
         </CardHeader>

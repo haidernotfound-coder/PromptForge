@@ -9,7 +9,7 @@ import * as React from "react";
  * `store.ts` — that store models real workspace data (prompts, folders,
  * tags) that syncs to Supabase, and recipes aren't workspace data at all.
  */
-const STORAGE_KEY = "promptforge:recipe-favorites";
+const STORAGE_KEY = "nexprompt:recipe-favorites";
 
 function readFavorites(): Set<string> {
   if (typeof window === "undefined") return new Set();

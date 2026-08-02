@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Privacy Policy",
-  description: "How PromptForge collects, stores, and protects your data.",
+  description: "How NexPrompt collects, stores, and protects your data.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       <div className="mt-10 space-y-10 text-text-muted leading-relaxed [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-text [&_h2]:mb-3 [&_p]:mb-3 [&_li]:mb-1.5">
         <section>
           <p>
-            This Privacy Policy explains what information PromptForge (&quot;we,&quot; &quot;us,&quot; or
+            This Privacy Policy explains what information NexPrompt (&quot;we,&quot; &quot;us,&quot; or
             &quot;our&quot;) collects, how we use it, and the choices you have. It applies to our website
             and application (together, the &quot;Service&quot;).
           </p>
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
             precisely), and pages visited, used for security, debugging, and understanding aggregate
             product usage.
           </p>
-          <p><strong className="text-text">Local/device storage.</strong> If you use PromptForge without
+          <p><strong className="text-text">Local/device storage.</strong> If you use NexPrompt without
             an account (demo mode), your data is stored only in your browser&apos;s local storage and a
             session cookie, and is never transmitted to our servers.
           </p>
@@ -84,7 +84,7 @@ export default function PrivacyPage() {
             <li><strong className="text-text">Service providers</strong> who host our infrastructure or process data on our behalf (e.g. Supabase for authentication and database hosting, Anthropic for AI assist requests), under contractual obligations to protect it;</li>
             <li><strong className="text-text">Public share links</strong> you explicitly create — anyone with the link can view that specific prompt or collection;</li>
             <li><strong className="text-text">Legal requirements</strong>, if we&apos;re required to disclose information to comply with a law, regulation, or valid legal process;</li>
-            <li><strong className="text-text">Business transfers</strong>, if PromptForge is involved in a merger, acquisition, or asset sale, subject to standard confidentiality protections.</li>
+            <li><strong className="text-text">Business transfers</strong>, if NexPrompt is involved in a merger, acquisition, or asset sale, subject to standard confidentiality protections.</li>
           </ul>
         </section>
 

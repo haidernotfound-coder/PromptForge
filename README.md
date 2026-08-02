@@ -1,4 +1,4 @@
-# PromptForge 2.0
+# NexPrompt 2.0
 
 A production-grade AI prompt management platform. Write, organize, refine, and
 share prompts for ChatGPT, Claude, Gemini, and Grok — all from one workspace.
@@ -77,7 +77,7 @@ The project is built in seven phases. Each phase ships a fully working,
 
 ### Design system
 
-Since PromptForge is a tool for a very literal act of *crafting*, the design
+Since NexPrompt is a tool for a very literal act of *crafting*, the design
 leans on a forge/tempering metaphor without being a costume: a calm ink/graphite
 base, a signal-violet accent for interactive/AI moments, and a muted brass
 secondary for anything that reads as "in progress" or "process."
@@ -241,7 +241,7 @@ later without reshaping the UI.
 
 - **Real-time sync** — `lib/store.ts` now listens for the browser's native
   `storage` event, so any change saved in one tab is picked up live by
-  every other open PromptForge tab in the same browser (open
+  every other open NexPrompt tab in the same browser (open
   `/dashboard/prompts` twice to see it). A `SyncIndicator` in the dashboard
   header shows live "Synced Ns ago" / "Syncing…" status, and a new
   **Sync** tab in Settings explains the scope (this device, multiple tabs —
@@ -351,7 +351,7 @@ next.config.mjs                        # perf flags + security headers
 
 ## Phase 7 — Backend & API Integration (this build)
 
-PromptForge still runs with **zero configuration** — every Phase 1–6 feature
+NexPrompt still runs with **zero configuration** — every Phase 1–6 feature
 keeps working exactly as before (demo cookie session, localStorage store,
 simulated AI) when no environment variables are set. Setting the variables
 below switches individual pieces over to the real thing; each is independent.

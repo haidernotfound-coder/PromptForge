@@ -12,7 +12,7 @@ export default function NotFound() {
         The page you&apos;re looking for may have been moved, renamed, or never forged in the first place.
       </p>
       <Button className="mt-8" asChild>
-        <Link href="/">Back to PromptForge</Link>
+        <Link href="/">Back to NexPrompt</Link>
       </Button>
     </div>
   );

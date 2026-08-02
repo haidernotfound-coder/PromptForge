@@ -1,4 +1,4 @@
--- PromptForge — Phase 13: Admin Dashboard
+-- NexPrompt — Phase 13: Admin Dashboard
 -- Run this after supabase/schema.sql (or via `supabase db push`).
 --
 -- Adds:

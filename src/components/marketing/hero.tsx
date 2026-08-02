@@ -27,7 +27,7 @@ export function Hero({ signedIn }: { signedIn: boolean }) {
             Every prompt you write, worth writing once.
           </h1>
           <p className="mt-6 text-lg text-text-muted leading-relaxed max-w-lg">
-            PromptForge is where prompt engineers keep their real toolkit — organized, tempered by AI, versioned, and ready across ChatGPT, Claude, Gemini, and Grok.
+            NexPrompt is where prompt engineers keep their real toolkit — organized, tempered by AI, versioned, and ready across ChatGPT, Claude, Gemini, and Grok.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row gap-3">
             <Button size="lg" asChild>

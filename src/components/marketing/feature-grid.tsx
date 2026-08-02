@@ -81,7 +81,7 @@ export function FeatureGrid() {
           Everything a serious prompt library needs
         </h2>
         <p className="mt-4 text-text-muted text-base leading-relaxed">
-          PromptForge treats prompts like the assets they are — versioned, organized, and easy to reach for exactly when you need them.
+          NexPrompt treats prompts like the assets they are — versioned, organized, and easy to reach for exactly when you need them.
         </p>
       </div>
 

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in or create a free PromptForge account to start organizing your prompts.",
+  description: "Sign in or create a free NexPrompt account to start organizing your prompts.",
   robots: { index: false, follow: true },
 };
 
@@ -19,7 +19,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
             <Sparkles className="h-4 w-4" />
           </span>
-          PromptForge
+          NexPrompt
         </Link>
         {children}
       </div>

@@ -40,7 +40,7 @@ export default function SharedPromptPage() {
           demo build) it can only be found on the browser it was shared from.
         </p>
         <Button asChild className="mt-4">
-          <Link href="/">Back to PromptForge</Link>
+          <Link href="/">Back to NexPrompt</Link>
         </Button>
       </div>
     );

@@ -7,7 +7,7 @@ import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
   description:
-    "PromptForge is the workspace for prompt engineers: write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok in one forge.",
+    "NexPrompt is the workspace for prompt engineers: write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok in one forge.",
   alternates: { canonical: "/" },
 };
 

@@ -27,7 +27,7 @@ function id(): string {
   return `id_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const STORAGE_PREFIX = "promptforge:forge-ai:";
+const STORAGE_PREFIX = "nexprompt:forge-ai:";
 
 function storageKey(promptKey: string): string {
   return `${STORAGE_PREFIX}${promptKey}`;

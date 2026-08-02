@@ -75,7 +75,7 @@ export function SyncIndicator() {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          Saved to this browser and mirrored live to any other open PromptForge tab.
+          Saved to this browser and mirrored live to any other open NexPrompt tab.
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

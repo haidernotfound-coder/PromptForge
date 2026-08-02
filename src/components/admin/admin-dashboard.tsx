@@ -66,7 +66,7 @@ export function AdminDashboard({
             <h1 className="font-display text-2xl font-semibold tracking-tight">Admin Dashboard</h1>
           </div>
           <p className="mt-1 text-sm text-text-muted">
-            Live usage, Groq key health, and system controls for PromptForge.
+            Live usage, Groq key health, and system controls for NexPrompt.
           </p>
           {!adminEmailConfigured && (
             <p className="mt-2 flex items-center gap-1.5 text-xs text-brass">

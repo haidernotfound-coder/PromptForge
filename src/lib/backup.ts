@@ -11,7 +11,7 @@
 
 import type { Collection, Folder, Prompt, Tag } from "@/types/prompt";
 
-const BACKUPS_KEY = "promptforge-backups";
+const BACKUPS_KEY = "nexprompt-backups";
 const MAX_BACKUPS = 10;
 
 export interface BackupSnapshot {

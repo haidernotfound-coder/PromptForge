@@ -46,7 +46,7 @@ export function Navbar({ session }: { session: AppSession | null }) {
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
             <Sparkles className="h-4 w-4" />
           </span>
-          PromptForge
+          NexPrompt
         </Link>
 
         <nav className="hidden md:flex items-center gap-1" aria-label="Primary">

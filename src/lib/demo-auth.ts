@@ -1,7 +1,7 @@
 /**
  * Demo auth
  * ---------
- * Phase 1–2 of PromptForge ship with no backend wired up yet. Rather than
+ * Phase 1–2 of NexPrompt ship with no backend wired up yet. Rather than
  * leaving the login/signup screens dead, "signing in" or "signing up" opens
  * a local demo account: a small session object stashed in a cookie so both
  * the browser and `middleware.ts` can see it.
@@ -21,7 +21,7 @@ export interface DemoSession {
 
 export const DEFAULT_DEMO_SESSION: DemoSession = {
   name: "Demo User",
-  email: "demo@promptforge.app",
+  email: "demo@nexprompt.app",
 };
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days

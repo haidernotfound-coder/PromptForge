@@ -17,14 +17,14 @@ import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
   title: {
-    default: "PromptForge — Craft, organize, and refine your AI prompts",
-    template: "%s · PromptForge",
+    default: "NexPrompt — Craft, organize, and refine your AI prompts",
+    template: "%s · NexPrompt",
   },
   description:
-    "PromptForge is the workspace for prompt engineers: write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok in one forge.",
-  metadataBase: new URL("https://promptforge.app"),
+    "NexPrompt is the workspace for prompt engineers: write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok in one forge.",
+  metadataBase: new URL("https://nexprompt.app"),
   openGraph: {
-    title: "PromptForge — Craft, organize, and refine your AI prompts",
+    title: "NexPrompt — Craft, organize, and refine your AI prompts",
     description:
       "The workspace for prompt engineers. Write, tag, version, and share prompts across every model.",
     type: "website",

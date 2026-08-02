@@ -58,7 +58,7 @@ export default function ResetPasswordPage() {
       <Card>
         <CardHeader>
           <CardTitle>Password reset unavailable</CardTitle>
-          <CardDescription>PromptForge is running in demo mode — there&apos;s no real account to reset.</CardDescription>
+          <CardDescription>NexPrompt is running in demo mode — there&apos;s no real account to reset.</CardDescription>
         </CardHeader>
         <CardContent>
           <Link href="/login" className="text-sm text-accent hover:underline">Back to sign in</Link>

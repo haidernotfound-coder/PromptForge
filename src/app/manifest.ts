@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "PromptForge — AI Prompt Management",
-    short_name: "PromptForge",
+    name: "NexPrompt — AI Prompt Management",
+    short_name: "NexPrompt",
     description:
       "Write, organize, refine, and share prompts for ChatGPT, Claude, Gemini, and Grok — all from one workspace.",
     start_url: "/dashboard",

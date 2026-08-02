@@ -1,4 +1,4 @@
--- PromptForge 2.0 — initial schema (Phase 1: Foundation)
+-- NexPrompt 2.0 — initial schema (Phase 1: Foundation)
 -- Run this in the Supabase SQL editor, or via `supabase db push`.
 
 create extension if not exists "uuid-ossp";

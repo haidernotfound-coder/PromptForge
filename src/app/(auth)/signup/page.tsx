@@ -105,8 +105,8 @@ export default function SignupPage() {
         <CardTitle>Start forging</CardTitle>
         <CardDescription>
           {backendConfigured
-            ? "Create your PromptForge account — it's free."
-            : "PromptForge is running in demo mode — creating an account just opens the shared demo workspace, no credit card or real signup required."}
+            ? "Create your NexPrompt account — it's free."
+            : "NexPrompt is running in demo mode — creating an account just opens the shared demo workspace, no credit card or real signup required."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

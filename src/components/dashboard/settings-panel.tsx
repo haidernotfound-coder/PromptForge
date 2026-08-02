@@ -92,7 +92,7 @@ function AccountTab() {
         <div>
           <h2 className="font-display text-base font-semibold">Account</h2>
           <p className="mt-1 text-sm text-text-muted">
-            You&apos;re signed in with a real PromptForge account. Your prompts, folders, tags, and
+            You&apos;re signed in with a real NexPrompt account. Your prompts, folders, tags, and
             collections are synced to your account and available on any device you sign into.
           </p>
         </div>
@@ -169,7 +169,7 @@ function AccountTab() {
       </div>
       <div className="space-y-1.5">
         <Label>Email</Label>
-        <p className="text-sm text-text-muted">{demoSession?.email ?? "demo@promptforge.app"}</p>
+        <p className="text-sm text-text-muted">{demoSession?.email ?? "demo@nexprompt.app"}</p>
       </div>
       <Button
         variant="outline"
@@ -246,8 +246,8 @@ function SyncTab() {
         </p>
       ) : (
         <p className="text-sm text-text-muted">
-          PromptForge saves to this browser&apos;s local storage on every change, and mirrors it live
-          to any other PromptForge tab open in the same browser — try it by opening{" "}
+          NexPrompt saves to this browser&apos;s local storage on every change, and mirrors it live
+          to any other NexPrompt tab open in the same browser — try it by opening{" "}
           <span className="font-medium text-text">/dashboard/prompts</span> in a second tab and editing
           a prompt in each.
         </p>
@@ -287,7 +287,7 @@ function DataTab() {
 
   function handleExport() {
     const payload = buildExportPayload(exportSnapshot());
-    downloadJson(payload, `promptforge-export-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadJson(payload, `nexprompt-export-${new Date().toISOString().slice(0, 10)}.json`);
     toast.success("Export downloaded");
   }
 

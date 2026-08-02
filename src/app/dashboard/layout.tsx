@@ -65,7 +65,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {maintenanceBlocked ? (
             <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-24 text-center">
               <TriangleAlert className="h-8 w-8 text-brass" />
-              <h2 className="font-display text-lg font-semibold">PromptForge is in maintenance mode</h2>
+              <h2 className="font-display text-lg font-semibold">NexPrompt is in maintenance mode</h2>
               <p className="max-w-sm text-sm text-text-muted">
                 We&apos;re making some updates. AI features and the workspace are temporarily unavailable —
                 please check back shortly.

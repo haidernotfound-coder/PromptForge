@@ -54,7 +54,7 @@ const TONE_INSTRUCTIONS: Record<RewriteTone, string> = {
 };
 
 const CRITIQUE_SYSTEM_PROMPT = [
-  "You are the AI Prompt Critic inside PromptForge, a prompt-management tool.",
+  "You are the AI Prompt Critic inside NexPrompt, a prompt-management tool.",
   "Analyze the quality of the given prompt as an instruction for a large language model.",
   "The prompt may contain {{variable}} placeholders — treat those as intentional reusable slots, not a flaw.",
   "Respond with ONLY a single valid JSON object (no markdown fences, no preamble, no trailing text) with exactly these fields:",
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
   const systemPrompt = isCritique
     ? CRITIQUE_SYSTEM_PROMPT
     : [
-        "You are the AI assist engine inside PromptForge, a prompt-management tool.",
+        "You are the AI assist engine inside NexPrompt, a prompt-management tool.",
         action === "rewrite"
           ? `${ACTION_INSTRUCTIONS.rewrite} Use ${TONE_INSTRUCTIONS[tone ?? "professional"]}.`
           : ACTION_INSTRUCTIONS[action as TransformAction],

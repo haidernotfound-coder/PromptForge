@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 
 export const metadata = {
   title: "Contact",
-  description: "Questions, feedback, or team plans — get in touch with the PromptForge team.",
+  description: "Questions, feedback, or team plans — get in touch with the NexPrompt team.",
   alternates: { canonical: "/contact" },
 };
 

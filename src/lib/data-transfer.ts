@@ -12,7 +12,7 @@ import type { Collection, Folder, Prompt, Tag } from "@/types/prompt";
 export const EXPORT_FORMAT_VERSION = 1;
 
 export interface ExportPayload {
-  format: "promptforge-export";
+  format: "nexprompt-export";
   version: number;
   exportedAt: string;
   data: {
@@ -25,7 +25,7 @@ export interface ExportPayload {
 
 export function buildExportPayload(data: ExportPayload["data"]): ExportPayload {
   return {
-    format: "promptforge-export",
+    format: "nexprompt-export",
     version: EXPORT_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     data,
@@ -60,7 +60,7 @@ export function parseImportPayload(raw: string): ExportPayload["data"] {
   const data = (obj?.data ?? parsed) as Partial<ExportPayload["data"]> | undefined;
 
   if (!data || typeof data !== "object") {
-    throw new ImportValidationError("That file doesn't look like a PromptForge export.");
+    throw new ImportValidationError("That file doesn't look like a NexPrompt export.");
   }
   const { prompts, folders, tags, collections } = data;
   if (prompts && !Array.isArray(prompts)) throw new ImportValidationError("\"prompts\" should be a list.");

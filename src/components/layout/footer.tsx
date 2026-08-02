@@ -27,7 +27,7 @@ export function Footer() {
               <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent text-accent-foreground">
                 <Sparkles className="h-3.5 w-3.5" />
               </span>
-              PromptForge
+              NexPrompt
             </Link>
             <p className="mt-3 text-sm text-text-muted max-w-xs">
               A forge for the prompts you rely on — organized, versioned, ready across every model.
@@ -53,7 +53,7 @@ export function Footer() {
         </div>
         <div className="temper-line mt-10" />
         <p className="mt-6 text-xs text-text-faint">
-          © {new Date().getFullYear()} PromptForge. Built for people who take their prompts seriously.
+          © {new Date().getFullYear()} NexPrompt. Built for people who take their prompts seriously.
         </p>
       </div>
     </footer>

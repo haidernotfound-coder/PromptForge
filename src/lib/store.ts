@@ -535,7 +535,7 @@ export const useStore = create<StoreState>()(
       },
     }),
     {
-      name: "promptforge-demo-store",
+      name: "nexprompt-demo-store",
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         prompts: s.prompts,
@@ -568,7 +568,7 @@ if (typeof window !== "undefined") {
 // it's our persisted key, pull the fresh state in. It's genuinely real sync
 // — just scoped to "this browser, multiple tabs" instead of "any device",
 // which is what Phase 7's backend will extend it to.
-const STORAGE_KEY = "promptforge-demo-store";
+const STORAGE_KEY = "nexprompt-demo-store";
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {

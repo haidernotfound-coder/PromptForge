@@ -78,7 +78,7 @@ function LoginForm() {
         <CardDescription>
           {backendConfigured
             ? "Sign in to get back to your prompts."
-            : "Sign in to get back to your prompts. PromptForge is running in demo mode — any credentials sign you into the same shared demo account."}
+            : "Sign in to get back to your prompts. NexPrompt is running in demo mode — any credentials sign you into the same shared demo account."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

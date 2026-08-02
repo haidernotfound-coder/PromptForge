@@ -1,7 +1,7 @@
 /**
  * Phase 7 — Backend & API Integration
  * ------------------------------------
- * PromptForge still needs to run with zero configuration (the README's
+ * NexPrompt still needs to run with zero configuration (the README's
  * "no environment variables required" promise from Phases 1–6). Rather than
  * hard-requiring Supabase, every real-auth/real-persistence code path checks
  * `isSupabaseConfigured()` first and falls back to the Phase 1–6 local demo
