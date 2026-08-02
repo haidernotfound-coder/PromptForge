@@ -12,7 +12,6 @@ const TOGGLES: { key: keyof SystemSettings; label: string; description: string }
   { key: "forgeAiEnabled", label: "Forge AI", description: "The floating chat panel in the prompt editor." },
   { key: "recipeForgeEnabled", label: "Recipe Forge", description: "Curated recipe catalog and insertion." },
   { key: "criticEnabled", label: "AI Prompt Critic", description: "Prompt quality scoring and auto-fix." },
-  { key: "codeforgeEnabled", label: "CodeForge", description: "All 9 CodeForge tools and the AI Coding Chat." },
 ];
 
 export function AdminSettingsPanel({
@@ -75,8 +74,8 @@ export function AdminSettingsPanel({
         <CardHeader>
           <CardTitle className="text-danger">Maintenance mode</CardTitle>
           <CardDescription>
-            Blocks Improve/Rewrite/Expand/Shorten/Critique, Forge AI, and all of CodeForge for everyone
-            (the local simulation fallback is also disabled — requests are rejected outright).
+            Blocks Improve/Rewrite/Expand/Shorten/Critique and Forge AI for everyone (falls back to the
+            local simulation is also disabled — requests are rejected outright).
           </CardDescription>
         </CardHeader>
         <CardContent>

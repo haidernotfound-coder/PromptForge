@@ -65,34 +65,6 @@ export function isForgeAiConfigured(): boolean {
 }
 
 /**
- * CodeForge — the second NexPrompt product — gets its own, fully
- * independent Groq key pool, same shape as Forge AI's: `CODEFORGE_GROQ_API_KEY_1`
- * .. `CODEFORGE_GROQ_API_KEY_7` (and unsuffixed `CODEFORGE_GROQ_API_KEY` as
- * key 1, for a single-key setup). Seven slots rather than five, since
- * CodeForge fans out across nine tools (Generate, Fix Bugs, Optimize,
- * Explain, Convert, Unit Tests, Documentation, Review, and the AI Coding
- * Chat) and is expected to see more traffic per user than a single Improve
- * button. None of these keys are shared with, or interfere with,
- * `GROQ_API_KEY_*` (PromptForge's Improve/Rewrite/Expand/Shorten/Critique)
- * or `FORGE_AI_GROQ_API_KEY_*` (Forge AI chat) — three fully separate
- * pools, rotated, billed, and rate-limited independently.
- */
-export function getCodeForgeApiKeys(): string[] {
-  const keys: string[] = [];
-  const first = process.env.CODEFORGE_GROQ_API_KEY_1 || process.env.CODEFORGE_GROQ_API_KEY;
-  if (first) keys.push(first);
-  for (let i = 2; i <= 7; i++) {
-    const key = process.env[`CODEFORGE_GROQ_API_KEY_${i}`];
-    if (key) keys.push(key);
-  }
-  return keys;
-}
-
-export function isCodeForgeConfigured(): boolean {
-  return getCodeForgeApiKeys().length > 0;
-}
-
-/**
  * Env var name for each configured key, in order — e.g.
  * `["GROQ_API_KEY_1", "GROQ_API_KEY_2"]` (or `["GROQ_API_KEY"]` for a
  * single unsuffixed key). Used as a stable, non-secret label for the admin
@@ -114,18 +86,6 @@ export function getForgeAiKeyLabels(): string[] {
   else if (process.env.FORGE_AI_GROQ_API_KEY) labels.push("FORGE_AI_GROQ_API_KEY");
   for (let i = 2; i <= 5; i++) {
     if (process.env[`FORGE_AI_GROQ_API_KEY_${i}`]) labels.push(`FORGE_AI_GROQ_API_KEY_${i}`);
-  }
-  return labels;
-}
-
-/** Same purpose as `getGroqKeyLabels`/`getForgeAiKeyLabels`, for the
- *  7-slot CodeForge pool. */
-export function getCodeForgeKeyLabels(): string[] {
-  const labels: string[] = [];
-  if (process.env.CODEFORGE_GROQ_API_KEY_1) labels.push("CODEFORGE_GROQ_API_KEY_1");
-  else if (process.env.CODEFORGE_GROQ_API_KEY) labels.push("CODEFORGE_GROQ_API_KEY");
-  for (let i = 2; i <= 7; i++) {
-    if (process.env[`CODEFORGE_GROQ_API_KEY_${i}`]) labels.push(`CODEFORGE_GROQ_API_KEY_${i}`);
   }
   return labels;
 }

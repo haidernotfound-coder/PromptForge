@@ -5,9 +5,6 @@ const FOOTER_LINKS = {
   Product: [
     { href: "/#products", label: "Products" },
     { href: "/products/promptforge", label: "PromptForge" },
-    { href: "/products/codeforge", label: "CodeForge" },
-  ],
-  PromptForge: [
     { href: "/products/promptforge#features", label: "Features" },
     { href: "/products/promptforge#workflow", label: "Workflow" },
   ],
@@ -25,7 +22,7 @@ export function Footer() {
   return (
     <footer className="border-t border-border">
       <div className="container py-12">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           <div className="col-span-2 md:col-span-1">
             <Link href="/" className="flex items-center gap-2 font-display text-base font-semibold">
               <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent text-accent-foreground">
@@ -34,7 +31,7 @@ export function Footer() {
               NexPrompt
             </Link>
             <p className="mt-3 text-sm text-text-muted max-w-xs">
-              One account, a growing forge of AI-powered tools — PromptForge and CodeForge,
+              One account, a growing forge of AI-powered tools — starting with PromptForge,
               ready across every model.
             </p>
           </div>
@@ -58,7 +55,7 @@ export function Footer() {
         </div>
         <div className="temper-line mt-10" />
         <p className="mt-6 text-xs text-text-faint">
-          © {new Date().getFullYear()} NexPrompt. Building the future of AI productivity.
+          © {new Date().getFullYear()} NexPrompt. Built for people who take their prompts seriously.
         </p>
       </div>
     </footer>

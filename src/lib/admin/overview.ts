@@ -3,11 +3,8 @@ import {
   getGroqKeyLabels,
   getForgeAiApiKeys,
   getForgeAiKeyLabels,
-  getCodeForgeApiKeys,
-  getCodeForgeKeyLabels,
   isAiConfigured,
   isForgeAiConfigured,
-  isCodeForgeConfigured,
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -42,7 +39,7 @@ export interface GroqKeyStatus {
 }
 
 export interface GroqPoolStatus {
-  pool: "ai" | "forge_ai" | "codeforge";
+  pool: "ai" | "forge_ai";
   name: string;
   configured: boolean;
   keys: GroqKeyStatus[];
@@ -66,7 +63,7 @@ function maskKeyLabel(label: string): string {
 }
 
 async function buildPool(
-  pool: "ai" | "forge_ai" | "codeforge",
+  pool: "ai" | "forge_ai",
   name: string,
   configured: boolean,
   labels: string[]
@@ -102,13 +99,12 @@ async function buildPool(
 }
 
 export async function getGroqMonitorData(): Promise<GroqMonitorData> {
-  const [aiPool, forgeAiPool, codeforgePool] = await Promise.all([
+  const [aiPool, forgeAiPool] = await Promise.all([
     buildPool("ai", "Improve / Rewrite / Expand / Shorten / Critique", isAiConfigured(), getGroqKeyLabels()),
     buildPool("forge_ai", "Forge AI chat", isForgeAiConfigured(), getForgeAiKeyLabels()),
-    buildPool("codeforge", "CodeForge tools + chat", isCodeForgeConfigured(), getCodeForgeKeyLabels()),
   ]);
 
-  const pools = [aiPool, forgeAiPool, codeforgePool];
+  const pools = [aiPool, forgeAiPool];
   return {
     pools,
     combined: {
@@ -127,7 +123,6 @@ export async function getGroqMonitorData(): Promise<GroqMonitorData> {
 // call Groq.
 void getGroqApiKeys;
 void getForgeAiApiKeys;
-void getCodeForgeApiKeys;
 
 // --- Overview ----------------------------------------------------------
 
@@ -157,15 +152,6 @@ const AI_REQUEST_EVENTS: EventType[] = [
   "prompt.shortened",
   "prompt.critiqued",
   "forge_ai.chat",
-  "codeforge.generate",
-  "codeforge.fix",
-  "codeforge.optimize",
-  "codeforge.explain",
-  "codeforge.convert",
-  "codeforge.tests",
-  "codeforge.docs",
-  "codeforge.review",
-  "codeforge.chat",
 ];
 
 export async function getOverviewCounts(events: AdminEvent[]): Promise<OverviewCounts> {
@@ -215,15 +201,6 @@ const FEATURE_EVENT_LABELS: Partial<Record<EventType, string>> = {
   "prompt.critiqued": "Critic",
   "forge_ai.chat": "Forge AI",
   "recipe.used": "Recipe Forge",
-  "codeforge.generate": "CF: Generate",
-  "codeforge.fix": "CF: Fix Bugs",
-  "codeforge.optimize": "CF: Optimize",
-  "codeforge.explain": "CF: Explain",
-  "codeforge.convert": "CF: Convert",
-  "codeforge.tests": "CF: Unit Tests",
-  "codeforge.docs": "CF: Docs",
-  "codeforge.review": "CF: Review",
-  "codeforge.chat": "CF: Chat",
 };
 
 export function buildFeatureUsageSeries(events: AdminEvent[], days: number): DailyFeatureUsage[] {

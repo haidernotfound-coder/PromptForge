@@ -34,10 +34,10 @@ const PRODUCTS: Product[] = [
   {
     slug: "codeforge",
     name: "CodeForge",
-    tagline: "Generate, fix, optimize, explain, convert, test, document, and review code — plus AI coding chat.",
+    tagline: "AI-assisted code review, refactors, and snippet libraries for engineers.",
     icon: Code2,
-    status: "available",
-    href: "/products/codeforge",
+    status: "soon",
+    href: "#",
   },
   {
     slug: "imageforge",
@@ -66,7 +66,7 @@ export function ProductGrid() {
           One account. A growing suite of AI-powered tools.
         </h2>
         <p className="mt-4 text-text-muted leading-relaxed">
-          Sign in once and unlock every tool as it ships — PromptForge and CodeForge are available now.
+          Sign in once and unlock every tool as it ships — starting with PromptForge, available now.
         </p>
       </motion.div>
 
@@ -109,7 +109,7 @@ export function ProductGrid() {
               >
                 {available ? (
                   <>
-                    Open {product.name} <ArrowRight className="h-3.5 w-3.5" />
+                    Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
                   </>
                 ) : (
                   <>

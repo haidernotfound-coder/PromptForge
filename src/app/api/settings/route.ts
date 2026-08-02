@@ -24,7 +24,6 @@ export async function POST(request: Request) {
     recipeForgeEnabled?: boolean;
     criticEnabled?: boolean;
     maintenanceMode?: boolean;
-    codeforgeEnabled?: boolean;
   };
   try {
     body = await request.json();
@@ -33,13 +32,7 @@ export async function POST(request: Request) {
   }
 
   const patch: Partial<Record<string, boolean>> = {};
-  for (const key of [
-    "forgeAiEnabled",
-    "recipeForgeEnabled",
-    "criticEnabled",
-    "maintenanceMode",
-    "codeforgeEnabled",
-  ] as const) {
+  for (const key of ["forgeAiEnabled", "recipeForgeEnabled", "criticEnabled", "maintenanceMode"] as const) {
     if (typeof body[key] === "boolean") patch[key] = body[key];
   }
 
