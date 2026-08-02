@@ -1,7 +1,5 @@
-"use client";
-
 /**
- * CodeForge — client module
+ * CodeForge — shared module
  * -------------------------
  * Talks to `/api/codeforge` (its own 7-key Groq pool — see
  * `getCodeForgeApiKeys` in `lib/supabase/config.ts`), fully independent of
