@@ -13,6 +13,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { EditorToolbar, applyWrap, extractVariables, type WrapKind } from "@/components/prompts/editor-toolbar";
 import { AiPanel } from "@/components/prompts/ai-panel";
 import { RecipeForge } from "@/components/prompts/recipe-forge";
+import { ForgeAiPanel } from "@/components/prompts/forge-ai";
 import { TagMultiselect } from "@/components/prompts/tag-multiselect";
 import { TagBadge } from "@/components/prompts/tag-badge";
 import { FolderSelect } from "@/components/prompts/folder-select";
@@ -96,6 +97,7 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
   }, [title, body, model, folderId, tagIds]);
 
   return (
+    <>
     <div className="mx-auto max-w-3xl space-y-6 pb-16">
       <div className="flex items-start justify-between gap-4">
         <Input
@@ -308,6 +310,18 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
         />
       )}
     </div>
+
+      <ForgeAiPanel
+        promptKey={prompt?.id ?? "new"}
+        promptBody={body}
+        onApply={(nextBody) => {
+          setBody(nextBody);
+          if (!isNew) {
+            updatePrompt(prompt!.id, { body: nextBody }, { snapshot: true, note: "Applied from Forge AI" });
+          }
+        }}
+      />
+    </>
   );
 }
 

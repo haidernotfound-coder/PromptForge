@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import {
+  Bot,
   BookOpen,
   FolderTree,
   Gauge,
@@ -42,6 +43,12 @@ const FEATURES = [
     title: "Recipe Forge",
     description:
       "Browse professionally structured prompt recipes across Writing, Business, Coding, Creative, Education, and Content — favorite the ones you reuse, and drop them straight into the editor.",
+  },
+  {
+    icon: Bot,
+    title: "Forge AI",
+    description:
+      "A draggable, resizable chat panel that lives alongside your prompt — talk through changes, then Apply the result straight into the editor. Remembers the conversation per prompt.",
   },
   {
     icon: History,

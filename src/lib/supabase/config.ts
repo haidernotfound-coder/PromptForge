@@ -39,3 +39,27 @@ export function getGroqApiKeys(): string[] {
 export function isAiConfigured(): boolean {
   return getGroqApiKeys().length > 0;
 }
+
+/**
+ * Forge AI (the floating chat panel) deliberately uses its own,
+ * independent Groq key pool — `FORGE_AI_GROQ_API_KEY_1`..`_5` (and
+ * unsuffixed `FORGE_AI_GROQ_API_KEY` for a single key) — rather than
+ * sharing `GROQ_API_KEY_*` with Improve/Rewrite/Expand/Shorten/Critique.
+ * Same multi-key fallback shape, same reasoning, just a fully separate
+ * pool so the two features can be rate-limited, billed, or rotated
+ * independently.
+ */
+export function getForgeAiApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.FORGE_AI_GROQ_API_KEY_1 || process.env.FORGE_AI_GROQ_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 5; i++) {
+    const key = process.env[`FORGE_AI_GROQ_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export function isForgeAiConfigured(): boolean {
+  return getForgeAiApiKeys().length > 0;
+}
