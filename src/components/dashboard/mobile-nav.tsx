@@ -11,7 +11,7 @@ import { FolderTree } from "@/components/dashboard/folder-tree";
 import { TagSidebarList } from "@/components/dashboard/tag-sidebar-list";
 import { CollectionSidebarList } from "@/components/dashboard/collection-sidebar-list";
 
-export function DashboardMobileNav() {
+export function DashboardMobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -26,7 +26,7 @@ export function DashboardMobileNav() {
         <DialogDescription className="sr-only">Dashboard navigation</DialogDescription>
         <div className="flex flex-col gap-6" onClick={() => setOpen(false)}>
           <DashboardBrand />
-          <DashboardSidebarNav />
+          <DashboardSidebarNav isAdmin={isAdmin} />
           <Button asChild size="sm" className="gap-1.5">
             <Link href="/dashboard/prompts/new">
               <Plus className="h-4 w-4" /> New prompt

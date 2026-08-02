@@ -10,6 +10,7 @@ import {
   Sparkles,
   LayoutTemplate,
   FolderKanban,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,12 +23,15 @@ const LINKS = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-export function DashboardSidebarNav() {
+const ADMIN_LINK = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+
+export function DashboardSidebarNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
+  const links = isAdmin ? [...LINKS, ADMIN_LINK] : LINKS;
 
   return (
     <nav className="flex flex-col gap-1" aria-label="Dashboard">
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = pathname === link.href;
         return (
           <Link

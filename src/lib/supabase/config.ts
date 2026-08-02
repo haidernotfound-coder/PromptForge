@@ -63,3 +63,29 @@ export function getForgeAiApiKeys(): string[] {
 export function isForgeAiConfigured(): boolean {
   return getForgeAiApiKeys().length > 0;
 }
+
+/**
+ * Env var name for each configured key, in order — e.g.
+ * `["GROQ_API_KEY_1", "GROQ_API_KEY_2"]` (or `["GROQ_API_KEY"]` for a
+ * single unsuffixed key). Used as a stable, non-secret label for the admin
+ * Groq Monitor — the key values themselves are never returned.
+ */
+export function getGroqKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.GROQ_API_KEY_1) labels.push("GROQ_API_KEY_1");
+  else if (process.env.GROQ_API_KEY) labels.push("GROQ_API_KEY");
+  for (let i = 2; i <= 5; i++) {
+    if (process.env[`GROQ_API_KEY_${i}`]) labels.push(`GROQ_API_KEY_${i}`);
+  }
+  return labels;
+}
+
+export function getForgeAiKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.FORGE_AI_GROQ_API_KEY_1) labels.push("FORGE_AI_GROQ_API_KEY_1");
+  else if (process.env.FORGE_AI_GROQ_API_KEY) labels.push("FORGE_AI_GROQ_API_KEY");
+  for (let i = 2; i <= 5; i++) {
+    if (process.env[`FORGE_AI_GROQ_API_KEY_${i}`]) labels.push(`FORGE_AI_GROQ_API_KEY_${i}`);
+  }
+  return labels;
+}

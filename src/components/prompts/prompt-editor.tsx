@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/prompts/confirm-dialog";
 import { ShareDialog } from "@/components/prompts/share-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore } from "@/lib/store";
+import { trackEvent } from "@/lib/track";
 import { MODELS, type Prompt } from "@/types/prompt";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,7 @@ export function PromptEditor({ prompt }: { prompt?: Prompt }) {
     const modelValue = model === "none" ? null : model;
     if (isNew) {
       const created = addPrompt({ title, body, model: modelValue, folderId, tagIds });
+      trackEvent("prompt.created", { promptId: created.id });
       toast.success("Prompt created");
       router.push(`/dashboard/prompts/${created.id}`);
     } else {

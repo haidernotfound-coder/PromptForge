@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { isForgeAiConfigured, getForgeAiApiKeys } from "@/lib/supabase/config";
+import { isForgeAiConfigured, getForgeAiApiKeys, getForgeAiKeyLabels } from "@/lib/supabase/config";
+import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { recordEvent, recordGroqUsage, getSystemSettings } from "@/lib/admin/store";
+import { getAppSessionOrNull } from "@/lib/session";
 
 /**
  * Forge AI provider wiring — the floating chat panel's own endpoint.
@@ -39,11 +42,6 @@ const SYSTEM_PROMPT = [
   "When you propose a full revised version of the prompt, put ONLY that revised prompt text inside a fenced code block (```) so the app can offer it as a one-click Apply — don't wrap explanation text in the code block, just the prompt itself.",
   "Keep replies focused and concise. This is a working session, not an essay.",
 ].join(" ");
-
-// Independent from the Improve/Rewrite/Expand/Shorten/Critique route's
-// `lastGoodKeyIndex` — Forge AI has its own key pool, so it tracks its own
-// last-successful index.
-let lastGoodKeyIndex = 0;
 
 type GroqCallResult =
   | { ok: true; output: string }
@@ -90,6 +88,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forge AI provider not configured" }, { status: 501 });
   }
 
+  const settings = await getSystemSettings();
+  if (settings.maintenanceMode) {
+    return NextResponse.json({ error: "AI features are temporarily in maintenance mode" }, { status: 503 });
+  }
+  if (!settings.forgeAiEnabled) {
+    return NextResponse.json({ error: "Forge AI is currently disabled" }, { status: 403 });
+  }
+
   let body: { promptBody?: string; messages?: ForgeAiChatMessage[] };
   try {
     body = await request.json();
@@ -116,17 +122,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
   }
 
+  const session = await getAppSessionOrNull();
+  const keyLabels = getForgeAiKeyLabels();
+
   try {
     const keys = getForgeAiApiKeys();
-    const order = keys.map((_, i) => (lastGoodKeyIndex + i) % keys.length);
+    const startIndex = getLastGoodKeyIndex("forge_ai");
+    const order = keys.map((_, i) => (startIndex + i) % keys.length);
 
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
       const result = await callGroq(keys[i], promptBody, cleanMessages);
+      await recordGroqUsage({ pool: "forge_ai", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {
-        lastGoodKeyIndex = i;
+        setLastGoodKeyIndex("forge_ai", i);
+        await recordEvent({ userLabel: session?.email, eventType: "forge_ai.chat", success: true });
         return NextResponse.json({ output: result.output });
       }
 
@@ -134,6 +146,13 @@ export async function POST(request: Request) {
 
       if (!result.exhausted) break;
     }
+
+    await recordEvent({
+      userLabel: session?.email,
+      eventType: "ai.error",
+      success: false,
+      metadata: { action: "forge_ai_chat", reason: lastFailure?.exhausted ? "rate_limited" : "provider_error" },
+    });
 
     if (lastFailure && !lastFailure.exhausted) {
       return NextResponse.json({ error: "Forge AI provider request failed" }, { status: lastFailure.status ?? 502 });
@@ -144,6 +163,12 @@ export async function POST(request: Request) {
     );
   } catch (err) {
     console.error("Forge AI Groq API request failed", err);
+    await recordEvent({
+      userLabel: session?.email,
+      eventType: "ai.error",
+      success: false,
+      metadata: { action: "forge_ai_chat", reason: "exception" },
+    });
     return NextResponse.json({ error: "Forge AI provider request failed" }, { status: 502 });
   }
 }

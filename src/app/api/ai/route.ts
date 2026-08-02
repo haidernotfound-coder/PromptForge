@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { isAiConfigured, getGroqApiKeys } from "@/lib/supabase/config";
+import { isAiConfigured, getGroqApiKeys, getGroqKeyLabels } from "@/lib/supabase/config";
+import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { recordEvent, recordGroqUsage, getSystemSettings, type EventType } from "@/lib/admin/store";
+import { getAppSessionOrNull } from "@/lib/session";
 
 /**
  * Phase 7 AI provider wiring.
@@ -60,10 +63,13 @@ const CRITIQUE_SYSTEM_PROMPT = [
   "that applies the suggestions while preserving the original intent and every {{variable}} placeholder exactly).",
 ].join(" ");
 
-// Remembers which key index last succeeded, per server instance, so
-// subsequent requests don't re-try already-exhausted keys from the start
-// every time. Reset naturally on redeploy/restart.
-let lastGoodKeyIndex = 0;
+const ACTION_EVENT_TYPES: Record<AiActionType, EventType> = {
+  improve: "prompt.improved",
+  rewrite: "prompt.rewritten",
+  expand: "prompt.expanded",
+  shorten: "prompt.shortened",
+  critique: "prompt.critiqued",
+};
 
 type GroqCallResult =
   | { ok: true; output: string }
@@ -112,6 +118,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "AI provider not configured" }, { status: 501 });
   }
 
+  const settings = await getSystemSettings();
+  if (settings.maintenanceMode) {
+    return NextResponse.json({ error: "AI features are temporarily in maintenance mode" }, { status: 503 });
+  }
+
   let body: { action?: AiActionType; input?: string; tone?: RewriteTone };
   try {
     body = await request.json();
@@ -131,6 +142,9 @@ export async function POST(request: Request) {
   if (input.length > 20_000) {
     return NextResponse.json({ error: "Prompt is too long" }, { status: 413 });
   }
+  if (isCritique && !settings.criticEnabled) {
+    return NextResponse.json({ error: "Critic is currently disabled" }, { status: 403 });
+  }
 
   const systemPrompt = isCritique
     ? CRITIQUE_SYSTEM_PROMPT
@@ -143,19 +157,26 @@ export async function POST(request: Request) {
         "Respond with ONLY the resulting prompt text. No preamble, no explanation, no markdown code fences, no quotes around it.",
       ].join(" ");
 
+  const eventType = ACTION_EVENT_TYPES[action];
+  const session = await getAppSessionOrNull();
+  const keyLabels = getGroqKeyLabels();
+
   try {
     const keys = getGroqApiKeys();
     // Start from the last key that worked, wrapping around, so a healthy
     // key found mid-list doesn't get bypassed every request.
-    const order = keys.map((_, i) => (lastGoodKeyIndex + i) % keys.length);
+    const startIndex = getLastGoodKeyIndex("ai");
+    const order = keys.map((_, i) => (startIndex + i) % keys.length);
 
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
       const result = await callGroq(keys[i], systemPrompt, input);
+      await recordGroqUsage({ pool: "ai", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {
-        lastGoodKeyIndex = i; // remember this key for next time
+        setLastGoodKeyIndex("ai", i); // remember this key for next time
+        await recordEvent({ userLabel: session?.email, eventType, success: true });
         return NextResponse.json({ output: result.output });
       }
 
@@ -172,6 +193,13 @@ export async function POST(request: Request) {
       // instantly tries the next configured key.
     }
 
+    await recordEvent({
+      userLabel: session?.email,
+      eventType: "ai.error",
+      success: false,
+      metadata: { action, reason: lastFailure?.exhausted ? "rate_limited" : "provider_error" },
+    });
+
     if (lastFailure && !lastFailure.exhausted) {
       return NextResponse.json({ error: "AI provider request failed" }, { status: lastFailure.status ?? 502 });
     }
@@ -182,6 +210,12 @@ export async function POST(request: Request) {
     );
   } catch (err) {
     console.error("Groq API request failed", err);
+    await recordEvent({
+      userLabel: session?.email,
+      eventType: "ai.error",
+      success: false,
+      metadata: { action, reason: "exception" },
+    });
     return NextResponse.json({ error: "AI provider request failed" }, { status: 502 });
   }
 }

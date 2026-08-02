@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ConfirmDialog } from "@/components/prompts/confirm-dialog";
 import { RECIPE_CATEGORIES, RECIPES, recipesByCategory, searchRecipes, type Recipe } from "@/lib/recipes";
 import { useRecipeFavorites } from "@/lib/recipe-favorites";
+import { trackEvent } from "@/lib/track";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,6 +55,7 @@ export function RecipeForge({
 
   function applyRecipe(recipe: Recipe) {
     onInsert(recipe.body);
+    trackEvent("recipe.used", { recipeId: recipe.id, title: recipe.title, category: recipe.category });
     toast.success(`Inserted "${recipe.title}"`);
     setOpen(false);
     setPendingRecipe(null);

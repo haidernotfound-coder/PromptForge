@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/track";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,6 +98,7 @@ export function PromptCard({ prompt, view = "grid" }: { prompt: Prompt; view?: "
                   className="gap-2"
                   onSelect={() => {
                     navigator.clipboard.writeText(prompt.body);
+                    trackEvent("prompt.copied", { promptId: prompt.id });
                     toast.success("Prompt copied to clipboard");
                   }}
                 >

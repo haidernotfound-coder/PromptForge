@@ -14,6 +14,7 @@ export interface Database {
           id: string;
           full_name: string | null;
           avatar_url: string | null;
+          is_admin: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -21,6 +22,7 @@ export interface Database {
           id: string;
           full_name?: string | null;
           avatar_url?: string | null;
+          is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -28,6 +30,7 @@ export interface Database {
           id?: string;
           full_name?: string | null;
           avatar_url?: string | null;
+          is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -225,9 +228,105 @@ export interface Database {
         };
         Relationships: [];
       };
+      admin_events: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          user_label: string | null;
+          event_type: string;
+          metadata: Json;
+          success: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          user_label?: string | null;
+          event_type: string;
+          metadata?: Json;
+          success?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          user_label?: string | null;
+          event_type?: string;
+          metadata?: Json;
+          success?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      groq_key_usage: {
+        Row: {
+          key_pool: string;
+          key_label: string;
+          usage_date: string;
+          request_count: number;
+          success_count: number;
+          failure_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          key_pool: string;
+          key_label: string;
+          usage_date?: string;
+          request_count?: number;
+          success_count?: number;
+          failure_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          key_pool?: string;
+          key_label?: string;
+          usage_date?: string;
+          request_count?: number;
+          success_count?: number;
+          failure_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      system_settings: {
+        Row: {
+          id: boolean;
+          forge_ai_enabled: boolean;
+          recipe_forge_enabled: boolean;
+          critic_enabled: boolean;
+          maintenance_mode: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          forge_ai_enabled?: boolean;
+          recipe_forge_enabled?: boolean;
+          critic_enabled?: boolean;
+          maintenance_mode?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          forge_ai_enabled?: boolean;
+          recipe_forge_enabled?: boolean;
+          critic_enabled?: boolean;
+          maintenance_mode?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      admin_overview: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
