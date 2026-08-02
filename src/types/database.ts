@@ -295,6 +295,7 @@ export interface Database {
           recipe_forge_enabled: boolean;
           critic_enabled: boolean;
           maintenance_mode: boolean;
+          codeforge_enabled: boolean;
           updated_at: string;
         };
         Insert: {
@@ -303,6 +304,7 @@ export interface Database {
           recipe_forge_enabled?: boolean;
           critic_enabled?: boolean;
           maintenance_mode?: boolean;
+          codeforge_enabled?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -311,6 +313,7 @@ export interface Database {
           recipe_forge_enabled?: boolean;
           critic_enabled?: boolean;
           maintenance_mode?: boolean;
+          codeforge_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [];
