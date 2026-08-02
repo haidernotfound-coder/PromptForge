@@ -49,7 +49,7 @@ export default function ResetPasswordPage() {
       setError(error.message);
       return;
     }
-    router.push("/promptforge");
+    router.push("/");
     router.refresh();
   }
 

@@ -26,7 +26,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const backendConfigured = isSupabaseConfigured();
-  const next = searchParams.get("next") || "/promptforge";
+  const next = searchParams.get("next") || "/";
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

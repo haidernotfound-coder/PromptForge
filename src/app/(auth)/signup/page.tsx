@@ -27,7 +27,7 @@ export default function SignupPage() {
   function enterDemo(overrides?: { name?: string; email?: string }) {
     setLoading(true);
     loginDemo(overrides);
-    router.push("/promptforge");
+    router.push("/");
     router.refresh();
   }
 
@@ -41,7 +41,7 @@ export default function SignupPage() {
       password,
       options: {
         data: { full_name: name },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/promptforge`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
       },
     })) ?? {};
     setLoading(false);
@@ -53,7 +53,7 @@ export default function SignupPage() {
     // immediately and we can go straight to the dashboard. Otherwise, tell
     // the person to check their inbox.
     if (data?.session) {
-      router.push("/promptforge");
+      router.push("/");
       router.refresh();
     } else {
       setConfirmationSent(true);
@@ -66,7 +66,7 @@ export default function SignupPage() {
     const supabase = getSupabaseBrowserClient();
     const { error } = (await supabase?.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/promptforge` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/` },
     })) ?? {};
     if (error) {
       setLoading(false);

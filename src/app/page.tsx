@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { PlatformHero } from "@/components/marketing/platform-hero";
 import { ProductGrid } from "@/components/marketing/product-grid";
-import { Hero } from "@/components/marketing/hero";
-import { FeatureGrid } from "@/components/marketing/feature-grid";
-import { WorkflowSection } from "@/components/marketing/workflow-section";
-import { CtaSection } from "@/components/marketing/cta-section";
+import { Button } from "@/components/ui/button";
 import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -21,15 +20,25 @@ export default async function HomePage() {
       <ProductGrid />
 
       <div className="border-t border-border">
-        <div className="container pt-16">
-          <p className="text-center text-xs font-medium uppercase tracking-wider text-text-faint">
-            Available now
+        <div className="container py-20 text-center">
+          <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
+            One account, signed in everywhere
+          </h2>
+          <p className="mt-3 text-text-muted max-w-lg mx-auto leading-relaxed">
+            Sign in once to NexPrompt and you&apos;re signed in across every tool in the
+            platform — starting with PromptForge.
           </p>
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <Button size="lg" asChild>
+              <Link href={session ? "/promptforge" : "/signup"}>
+                {session ? "Open PromptForge" : "Get started free"} <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/products/promptforge">Learn more about PromptForge</Link>
+            </Button>
+          </div>
         </div>
-        <Hero signedIn={!!session} />
-        <FeatureGrid />
-        <WorkflowSection />
-        <CtaSection signedIn={!!session} />
       </div>
     </>
   );

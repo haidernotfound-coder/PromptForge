@@ -3,9 +3,10 @@ import { Sparkles } from "lucide-react";
 
 const FOOTER_LINKS = {
   Product: [
-    { href: "/#features", label: "Features" },
-    { href: "/#workflow", label: "Workflow" },
-    { href: "/pricing", label: "Pricing" },
+    { href: "/#products", label: "Products" },
+    { href: "/products/promptforge", label: "PromptForge" },
+    { href: "/products/promptforge#features", label: "Features" },
+    { href: "/products/promptforge#workflow", label: "Workflow" },
   ],
   Company: [
     { href: "/about", label: "About" },
@@ -30,7 +31,8 @@ export function Footer() {
               NexPrompt
             </Link>
             <p className="mt-3 text-sm text-text-muted max-w-xs">
-              A forge for the prompts you rely on — organized, versioned, ready across every model.
+              One account, a growing forge of AI-powered tools — starting with PromptForge,
+              ready across every model.
             </p>
           </div>
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (

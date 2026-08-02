@@ -59,7 +59,7 @@ export function DashboardBrand() {
       <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
         <Sparkles className="h-4 w-4" />
       </span>
-      NexPrompt
+      PromptForge
     </Link>
   );
 }
