@@ -8,7 +8,7 @@ import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
   description:
-    "NexPrompt is a platform of AI-powered tools. PromptForge — write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok — is available now, with more tools on the way.",
+    "NexPrompt is a platform of AI-powered tools. PromptForge — write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok — and CodeForge — generate, fix, and optimize code — are both available now, with more tools on the way.",
   alternates: { canonical: "/" },
 };
 
@@ -26,19 +26,34 @@ export default async function HomePage() {
           </h2>
           <p className="mt-3 text-text-muted max-w-lg mx-auto leading-relaxed">
             Sign in once to NexPrompt and you&apos;re signed in across every tool in the
-            platform — starting with PromptForge.
+            platform — PromptForge and CodeForge included.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <Button size="lg" asChild>
-              <Link href={session ? "/products/promptforge" : "/signup"}>
-                {session ? "Open PromptForge" : "Get started free"} <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href={session ? "/promptforge" : "/products/promptforge"}>
-                {session ? "Go to dashboard" : "Learn more about PromptForge"}
-              </Link>
-            </Button>
+            {session ? (
+              <>
+                <Button size="lg" asChild>
+                  <Link href="/products/promptforge">
+                    Open PromptForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/products/codeforge">
+                    Open CodeForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="lg" asChild>
+                  <Link href="/signup">
+                    Get started free <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="#products">Learn more about the platform</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ export function Hero({ signedIn }: { signedIn: boolean }) {
         >
           <div className="temper-line w-24 mb-6" />
           <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-faint">
-            by Haider Labs
+            by NexPrompt
           </p>
           <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.4rem] font-semibold tracking-tight leading-[1.05] text-balance">
             Every prompt you write, worth writing once.

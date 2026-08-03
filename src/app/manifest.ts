@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "NexPrompt — AI-powered tools",
     short_name: "NexPrompt",
     description:
-      "NexPrompt is a platform of AI-powered tools, starting with PromptForge — write, organize, refine, and share prompts for ChatGPT, Claude, Gemini, and Grok from one workspace.",
+      "NexPrompt is a platform of AI-powered tools: PromptForge for writing, organizing, and sharing prompts, and CodeForge for generating and fixing code — all from one workspace.",
     start_url: "/",
     display: "standalone",
     background_color: "#0b0b0f",

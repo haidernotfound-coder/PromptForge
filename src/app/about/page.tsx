@@ -1,7 +1,7 @@
 export const metadata = {
   title: "About",
   description:
-    "NexPrompt is building the future of AI productivity — powerful yet simple AI tools, starting with PromptForge, under one platform.",
+    "NexPrompt is building the future of AI productivity — powerful yet simple AI tools, with PromptForge and CodeForge under one platform.",
   alternates: { canonical: "/about" },
 };
 
@@ -14,8 +14,8 @@ export default function AboutPage() {
         tools that help people work smarter, create faster, and achieve more.
       </p>
       <p className="mt-4 text-text-muted leading-relaxed">
-        Starting with PromptForge, our goal is to build an ecosystem of AI applications for
-        creators, developers, students, and businesses—all under one platform.
+        With PromptForge and CodeForge live today, our goal is to build an ecosystem of AI
+        applications for creators, developers, students, and businesses—all under one platform.
       </p>
     </div>
   );

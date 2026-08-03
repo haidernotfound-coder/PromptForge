@@ -21,24 +21,41 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
         >
           <div className="temper-line w-24 mx-auto mb-6" />
           <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-faint">
-            NexPrompt
+            by Haider Labs
           </p>
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05] text-balance">
             One platform for the AI tools you actually use.
           </h1>
           <p className="mt-6 text-lg text-text-muted leading-relaxed">
-            A single account across every tool NexPrompt ships. Start with PromptForge,
+            A single account across every tool NexPrompt ships. PromptForge and CodeForge are
             available today — more tools are on the way.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
-            <Button size="lg" asChild>
-              <Link href={signedIn ? "/products/promptforge" : "/signup"}>
-                {signedIn ? "Go to PromptForge" : "Get started free"} <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="#products">Explore the platform</Link>
-            </Button>
+            {signedIn ? (
+              <>
+                <Button size="lg" asChild>
+                  <Link href="/products/promptforge">
+                    Open PromptForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/products/codeforge">
+                    Open CodeForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="lg" asChild>
+                  <Link href="/signup">
+                    Get started free <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="#products">Explore the platform</Link>
+                </Button>
+              </>
+            )}
           </div>
           <p className="mt-6 text-xs text-text-faint">
             No credit card required · Free tier included

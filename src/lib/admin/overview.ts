@@ -297,8 +297,81 @@ export function buildTopStatistics(events: AdminEvent[]): TopStatistics {
   return { topRecipes, topCopiedPrompts, mostActiveUsers, mostImprovedPrompts };
 }
 
+// --- Scoped (per-product) overview — same shape as the top overview cards,
+// but computed from only one product's event types, so a product's own
+// admin tab (e.g. CodeForge) can show its own "Active today" / "Requests
+// today" instead of the whole platform's. ---------------------------------
+
+export interface ScopedOverviewCounts {
+  usersRecent: number;
+  activeToday: number;
+  requestsToday: number;
+  failedToday: number;
+}
+
+export function buildScopedOverview(events: AdminEvent[], types: Set<EventType>): ScopedOverviewCounts {
+  const scoped = events.filter((e) => types.has(e.eventType));
+  const todays = scoped.filter((e) => isToday(e.createdAt));
+  const activeUserLabels = new Set(todays.filter((e) => e.userLabel).map((e) => e.userLabel));
+  const allUserLabels = new Set(scoped.filter((e) => e.userLabel).map((e) => e.userLabel));
+
+  return {
+    usersRecent: allUserLabels.size,
+    activeToday: activeUserLabels.size,
+    requestsToday: todays.length,
+    failedToday: todays.filter((e) => !e.success).length,
+  };
+}
+
+export interface ScopedTopStats {
+  topTools: TopStatEntry[];
+  mostActiveUsers: TopStatEntry[];
+}
+
+export function buildScopedTopStats(
+  events: AdminEvent[],
+  types: Set<EventType>,
+  toolLabel: (type: EventType) => string
+): ScopedTopStats {
+  const scoped = events.filter((e) => types.has(e.eventType));
+
+  const toolCounts = new Map<string, number>();
+  for (const e of scoped) {
+    const label = toolLabel(e.eventType);
+    toolCounts.set(label, (toolCounts.get(label) ?? 0) + 1);
+  }
+  const topTools = Array.from(toolCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const userCounts = new Map<string, number>();
+  for (const e of scoped) {
+    if (!e.userLabel) continue;
+    userCounts.set(e.userLabel, (userCounts.get(e.userLabel) ?? 0) + 1);
+  }
+  const mostActiveUsers = Array.from(userCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return { topTools, mostActiveUsers };
+}
+
 // --- Full bundle (used by the initial server-rendered page + the polling
 // API route, so both stay perfectly in sync) --------------------------------
+
+const CODEFORGE_EVENT_TYPES = new Set<EventType>([
+  "codeforge.generate",
+  "codeforge.fix",
+  "codeforge.optimize",
+  "codeforge.explain",
+  "codeforge.convert",
+  "codeforge.tests",
+  "codeforge.docs",
+  "codeforge.review",
+  "codeforge.chat",
+]);
 
 export interface AdminOverviewBundle {
   overview: OverviewCounts;
@@ -310,6 +383,8 @@ export interface AdminOverviewBundle {
   topStats: TopStatistics;
   settings: Awaited<ReturnType<typeof getSystemSettings>>;
   generatedAt: string;
+  codeforgeOverview: ScopedOverviewCounts;
+  codeforgeTopStats: ScopedTopStats;
 }
 
 export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
@@ -330,5 +405,11 @@ export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
     topStats: buildTopStatistics(events),
     settings,
     generatedAt: new Date().toISOString(),
+    codeforgeOverview: buildScopedOverview(events, CODEFORGE_EVENT_TYPES),
+    codeforgeTopStats: buildScopedTopStats(
+      events,
+      CODEFORGE_EVENT_TYPES,
+      (type) => FEATURE_EVENT_LABELS[type] ?? type
+    ),
   };
 }

@@ -18,16 +18,16 @@ import { getAdminSession } from "@/lib/admin/session";
 
 export const metadata: Metadata = {
   title: {
-    default: "NexPrompt — Craft, organize, and refine your AI prompts",
+    default: "NexPrompt — AI tools for prompts and code",
     template: "%s · NexPrompt",
   },
   description:
-    "NexPrompt is the workspace for prompt engineers: write, tag, version, and share prompts for ChatGPT, Claude, Gemini, and Grok in one forge.",
+    "NexPrompt is the workspace for AI power users: PromptForge for writing, tagging, versioning, and sharing prompts, and CodeForge for generating, fixing, and optimizing code — all in one platform.",
   metadataBase: new URL("https://nexprompt.app"),
   openGraph: {
-    title: "NexPrompt — Craft, organize, and refine your AI prompts",
+    title: "NexPrompt — AI tools for prompts and code",
     description:
-      "The workspace for prompt engineers. Write, tag, version, and share prompts across every model.",
+      "One platform, two forges: craft prompts with PromptForge and ship code with CodeForge, all under one account.",
     type: "website",
   },
 };
