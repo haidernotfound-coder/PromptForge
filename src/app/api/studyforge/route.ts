@@ -49,7 +49,14 @@ const TOOL_EVENT_TYPES: Record<StudyForgeTool, EventType> = {
 };
 
 function toolSystemPrompt(tool: StudyForgeTool, detail: string): string {
-  const detailHint = detail ? ` Additional context/preferences from the student: ${detail}.` : "";
+  const detailHint = detail
+    ? ` Additional context/preferences from the student: ${detail}. This may include a class/grade` +
+      " level, chapter, board/curriculum, or difficulty — treat every part of it as a hard" +
+      " requirement, not a suggestion: the class/grade and chapter stated MUST be matched exactly." +
+      " Do not default to a different (especially easier or lower) grade level than what is stated," +
+      " and do not substitute a different chapter/topic even if it seems related. If a count is" +
+      " mentioned (e.g. \"10 cards\", \"5 questions\"), use that exact count."
+    : "";
   const base = "You are StudyForge, an expert, encouraging tutor embedded in NexPrompt.";
   switch (tool) {
     case "explain":
@@ -88,7 +95,7 @@ function toolSystemPrompt(tool: StudyForgeTool, detail: string): string {
         "Number each question. Use multiple choice by default unless told otherwise. After all" +
           " questions, include a clearly labeled \"Answer key\" section with the correct answer and a" +
           " one-line rationale for each. Default to 5 questions of medium difficulty if unspecified.",
-      ].join(" ");
+      ].filter(Boolean).join(" ");
     case "homework":
       return [
         base,
@@ -135,15 +142,30 @@ const CHAT_SYSTEM_PROMPT = [
   "say so briefly rather than stalling on a clarifying question.",
 ].join(" ");
 
+type GroqMessageContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+
+type GroqMessage = { role: "system" | "user" | "assistant"; content: GroqMessageContent };
+
 type GroqCallResult =
   | { ok: true; output: string }
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
   | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
+// llama-3.3-70b-versatile follows multi-constraint instructions (grade level
+// + chapter + count, all at once) far more reliably than the 8b-instant
+// model, which was silently dropping/ignoring the "detail" hint (e.g.
+// student-specified class/chapter) and defaulting to generic/lower-grade
+// content. When the student attaches images, we switch to Groq's vision
+// model instead — it's the only one of the two that can actually read them.
+const TEXT_MODEL = "llama-3.3-70b-versatile";
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+
 async function callGroq(
   apiKey: string,
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
-  opts: { json?: boolean } = {}
+  messages: GroqMessage[],
+  opts: { json?: boolean; vision?: boolean } = {}
 ): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -152,7 +174,7 @@ async function callGroq(
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: opts.vision ? VISION_MODEL : TEXT_MODEL,
       max_tokens: 3000,
       temperature: 0.4,
       messages,
@@ -217,12 +239,17 @@ function parseFlashcardsJson(raw: string): { front: string; back: string }[] | n
   return cards.length > 0 ? cards : null;
 }
 
+const MAX_IMAGES = 10;
+
 type RequestBody =
   | {
       mode: "tool";
       tool?: StudyForgeTool;
       input?: string;
       detail?: string;
+      /** Data URLs (data:image/...;base64,...), max 10, read by Groq's
+       *  vision model so the tool result is based on what's in them. */
+      images?: string[];
     }
   | {
       mode: "chat";
@@ -249,26 +276,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  let messages: { role: "system" | "user" | "assistant"; content: string }[];
+  let messages: GroqMessage[];
   let eventType: EventType;
   let isFlashcards = false;
+  let useVision = false;
 
   if (body.mode === "tool") {
     const tool = body.tool;
     const input = body.input;
+    const rawImages = Array.isArray(body.images) ? body.images : [];
+    const images = rawImages
+      .filter((src): src is string => typeof src === "string" && src.startsWith("data:image/"))
+      .slice(0, MAX_IMAGES);
+    if (rawImages.length > MAX_IMAGES) {
+      return NextResponse.json({ error: `You can attach at most ${MAX_IMAGES} images` }, { status: 400 });
+    }
+
     if (!tool || !TOOL_EVENT_TYPES[tool]) {
       return NextResponse.json({ error: "Invalid or missing tool" }, { status: 400 });
     }
-    if (typeof input !== "string" || !input.trim()) {
+    // Text is still required unless images are attached — the images can
+    // stand in as "the material" (e.g. a photographed textbook page).
+    if ((typeof input !== "string" || !input.trim()) && images.length === 0) {
       return NextResponse.json({ error: "Missing input" }, { status: 400 });
     }
-    if (input.length > 30_000) {
+    if (typeof input === "string" && input.length > 30_000) {
       return NextResponse.json({ error: "Input is too long" }, { status: 413 });
     }
+
     const system = toolSystemPrompt(tool, body.detail?.trim() ?? "");
+    const textPart = (input ?? "").trim();
+    useVision = images.length > 0;
+
+    const userContent: GroqMessageContent = useVision
+      ? [
+          {
+            type: "text",
+            text:
+              (textPart || "Use the attached image(s) as the material/question for this task.") +
+              (images.length > 0
+                ? ` The student attached ${images.length} image${images.length === 1 ? "" : "s"} —` +
+                  " read all of them carefully and base your answer strictly on what's actually" +
+                  " shown in them (text, diagrams, handwriting, problems, etc.), not on assumptions."
+                : ""),
+          },
+          ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        ]
+      : textPart;
+
     messages = [
       { role: "system", content: system },
-      { role: "user", content: input },
+      { role: "user", content: userContent },
     ];
     eventType = TOOL_EVENT_TYPES[tool];
     isFlashcards = tool === "flashcards";
@@ -304,7 +362,7 @@ export async function POST(request: Request) {
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
-      const result = await callGroq(keys[i], messages, { json: isFlashcards });
+      const result = await callGroq(keys[i], messages, { json: isFlashcards, vision: useVision });
       await recordGroqUsage({ pool: "studyforge", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {

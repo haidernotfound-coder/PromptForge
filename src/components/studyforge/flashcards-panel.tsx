@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FlashcardDeck } from "@/components/studyforge/flashcard-deck";
+import { StudyForgeImageUploader } from "@/components/studyforge/image-uploader";
 import { runStudyForgeFlashcards, studyForgeToolMeta, type Flashcard } from "@/lib/studyforge";
 
 export function StudyForgeFlashcardsPanel() {
   const meta = studyForgeToolMeta("flashcards");
   const [input, setInput] = React.useState("");
   const [detail, setDetail] = React.useState("");
+  const [images, setImages] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [cards, setCards] = React.useState<Flashcard[]>([]);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
@@ -35,14 +37,14 @@ export function StudyForgeFlashcardsPanel() {
   }, []);
 
   async function run() {
-    if (!input.trim()) {
+    if (!input.trim() && images.length === 0) {
       toast.error(`${meta.inputLabel} is empty`);
       return;
     }
     setLoading(true);
     setCards([]);
     try {
-      const result = await runStudyForgeFlashcards(input, { detail });
+      const result = await runStudyForgeFlashcards(input, { detail, images });
       setCards(result.cards);
       if (result.cards.length === 0) {
         toast.error("Couldn't generate a flashcard deck — try rephrasing the topic.");
@@ -87,6 +89,7 @@ export function StudyForgeFlashcardsPanel() {
                 placeholder={meta.detailPlaceholder}
               />
             </div>
+            <StudyForgeImageUploader images={images} onChange={setImages} />
             <Button onClick={run} disabled={loading} className="gap-1.5">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Generate Flashcards

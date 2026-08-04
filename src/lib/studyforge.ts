@@ -67,8 +67,8 @@ export const STUDYFORGE_TOOLS: StudyForgeToolMeta[] = [
     inputLabel: "Topic or material",
     inputPlaceholder: "Paste notes, or describe the subject you want flashcards for…",
     needsDetail: true,
-    detailLabel: "Number of cards (optional)",
-    detailPlaceholder: "e.g. 10",
+    detailLabel: "Class / chapter / count (optional)",
+    detailPlaceholder: "e.g. Class 9, Chapter 3 — Force and Laws of Motion, 10 cards",
     href: "/studyforge/flashcards",
   },
   {
@@ -141,6 +141,9 @@ export interface StudyForgeToolResult {
 
 export interface RunToolOptions {
   detail?: string;
+  /** Up to 10 image data URLs (data:image/...;base64,...) for Groq's vision
+   *  model to read and base the result on. */
+  images?: string[];
 }
 
 /** Runs a StudyForge tool. Tries the real provider first (POST
@@ -152,7 +155,7 @@ export async function runStudyForgeTool(
   input: string,
   opts: RunToolOptions = {}
 ): Promise<StudyForgeToolResult> {
-  if (!input.trim()) {
+  if (!input.trim() && !(opts.images && opts.images.length > 0)) {
     return { output: "", remote: false };
   }
 
@@ -165,6 +168,7 @@ export async function runStudyForgeTool(
         tool,
         input,
         detail: opts.detail,
+        images: opts.images,
       }),
     });
     if (res.ok) {
@@ -306,7 +310,7 @@ export async function runStudyForgeFlashcards(
   input: string,
   opts: RunToolOptions = {}
 ): Promise<StudyForgeFlashcardsResult> {
-  if (!input.trim()) {
+  if (!input.trim() && !(opts.images && opts.images.length > 0)) {
     return { cards: [], remote: false };
   }
 
@@ -319,6 +323,7 @@ export async function runStudyForgeFlashcards(
         tool: "flashcards",
         input,
         detail: opts.detail,
+        images: opts.images,
       }),
     });
     if (res.ok) {
@@ -359,7 +364,10 @@ function parseFlashcards(raw: unknown): Flashcard[] {
  *  the shape matches what the real model is asked to produce. */
 function localFlashcards(input: string, opts: RunToolOptions): Flashcard[] {
   const topic = firstLine(input);
-  const count = Number.parseInt(opts.detail ?? "", 10);
+  // Pull a count out of anywhere in the detail string (e.g. "Class 9, 10
+  // cards") instead of requiring the whole field to be a bare number.
+  const countMatch = (opts.detail ?? "").match(/\d+/);
+  const count = countMatch ? Number.parseInt(countMatch[0], 10) : NaN;
   const base: Flashcard[] = [
     { front: `Define: ${topic}`, back: "(A real, concise definition will appear here once a StudyForge key is configured.)" },
     { front: `Why does "${topic}" matter?`, back: "(A real explanation of its significance will appear here once a key is configured.)" },

@@ -11,12 +11,14 @@ import { Badge } from "@/components/ui/badge";
 // Reused as-is from CodeForge rather than duplicated — it's a generic
 // "copyable output block" with no code-specific behavior when isCode=false.
 import { CodeForgeOutputBlock } from "@/components/codeforge/code-block";
+import { StudyForgeImageUploader } from "@/components/studyforge/image-uploader";
 import { runStudyForgeTool, studyForgeToolMeta, type StudyForgeTool } from "@/lib/studyforge";
 
 export function StudyForgeToolPanel({ tool }: { tool: StudyForgeTool }) {
   const meta = studyForgeToolMeta(tool);
   const [input, setInput] = React.useState("");
   const [detail, setDetail] = React.useState("");
+  const [images, setImages] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [output, setOutput] = React.useState("");
   const [configured, setConfigured] = React.useState<boolean | null>(null);
@@ -42,18 +44,19 @@ export function StudyForgeToolPanel({ tool }: { tool: StudyForgeTool }) {
     setInput("");
     setOutput("");
     setDetail("");
+    setImages([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
   async function run() {
-    if (!input.trim()) {
+    if (!input.trim() && images.length === 0) {
       toast.error(`${meta.inputLabel} is empty`);
       return;
     }
     setLoading(true);
     setOutput("");
     try {
-      const result = await runStudyForgeTool(tool, input, { detail });
+      const result = await runStudyForgeTool(tool, input, { detail, images });
       setOutput(result.output);
     } finally {
       setLoading(false);
@@ -97,6 +100,7 @@ export function StudyForgeToolPanel({ tool }: { tool: StudyForgeTool }) {
                 />
               </div>
             )}
+            <StudyForgeImageUploader images={images} onChange={setImages} />
             <Button onClick={run} disabled={loading} className="gap-1.5">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Run {meta.label}
