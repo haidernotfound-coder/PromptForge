@@ -108,7 +108,7 @@ export function StudyForgeImageUploader({ images, onChange }: StudyForgeImageUpl
         {images.length >= MAX_IMAGES ? "Limit reached" : "Add images"}
       </Button>
       <p className="text-[11px] text-text-muted">
-        StudyForge's Groq vision model will read these and base the result on what's actually in them.
+        StudyForge&apos;s Groq vision model will read these and base the result on what&apos;s actually in them.
       </p>
     </div>
   );
