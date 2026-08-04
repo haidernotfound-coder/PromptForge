@@ -296,6 +296,7 @@ export interface Database {
           critic_enabled: boolean;
           maintenance_mode: boolean;
           codeforge_enabled: boolean;
+          studyforge_enabled: boolean;
           updated_at: string;
         };
         Insert: {
@@ -305,6 +306,7 @@ export interface Database {
           critic_enabled?: boolean;
           maintenance_mode?: boolean;
           codeforge_enabled?: boolean;
+          studyforge_enabled?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -314,6 +316,7 @@ export interface Database {
           critic_enabled?: boolean;
           maintenance_mode?: boolean;
           codeforge_enabled?: boolean;
+          studyforge_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [];

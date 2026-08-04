@@ -27,8 +27,8 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
             One platform for the AI tools you actually use.
           </h1>
           <p className="mt-6 text-lg text-text-muted leading-relaxed">
-            A single account across every tool NexPrompt ships. PromptForge and CodeForge are
-            available today — more tools are on the way.
+            A single account across every tool NexPrompt ships. PromptForge, CodeForge, and
+            StudyForge are available today — more tools are on the way.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
             {signedIn ? (
@@ -41,6 +41,11 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
                 <Button size="lg" variant="outline" asChild>
                   <Link href="/products/codeforge">
                     Open CodeForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/products/studyforge">
+                    Open StudyForge <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </>

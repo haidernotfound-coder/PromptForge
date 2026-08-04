@@ -5,9 +5,12 @@ import {
   getForgeAiKeyLabels,
   getCodeForgeApiKeys,
   getCodeForgeKeyLabels,
+  getStudyForgeApiKeys,
+  getStudyForgeKeyLabels,
   isAiConfigured,
   isForgeAiConfigured,
   isCodeForgeConfigured,
+  isStudyForgeConfigured,
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -42,7 +45,7 @@ export interface GroqKeyStatus {
 }
 
 export interface GroqPoolStatus {
-  pool: "ai" | "forge_ai" | "codeforge";
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge";
   name: string;
   configured: boolean;
   keys: GroqKeyStatus[];
@@ -66,7 +69,7 @@ function maskKeyLabel(label: string): string {
 }
 
 async function buildPool(
-  pool: "ai" | "forge_ai" | "codeforge",
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge",
   name: string,
   configured: boolean,
   labels: string[]
@@ -102,13 +105,14 @@ async function buildPool(
 }
 
 export async function getGroqMonitorData(): Promise<GroqMonitorData> {
-  const [aiPool, forgeAiPool, codeforgePool] = await Promise.all([
+  const [aiPool, forgeAiPool, codeforgePool, studyforgePool] = await Promise.all([
     buildPool("ai", "Improve / Rewrite / Expand / Shorten / Critique", isAiConfigured(), getGroqKeyLabels()),
     buildPool("forge_ai", "Forge AI chat", isForgeAiConfigured(), getForgeAiKeyLabels()),
     buildPool("codeforge", "CodeForge tools + chat", isCodeForgeConfigured(), getCodeForgeKeyLabels()),
+    buildPool("studyforge", "StudyForge tools + chat", isStudyForgeConfigured(), getStudyForgeKeyLabels()),
   ]);
 
-  const pools = [aiPool, forgeAiPool, codeforgePool];
+  const pools = [aiPool, forgeAiPool, codeforgePool, studyforgePool];
   return {
     pools,
     combined: {
@@ -128,6 +132,7 @@ export async function getGroqMonitorData(): Promise<GroqMonitorData> {
 void getGroqApiKeys;
 void getForgeAiApiKeys;
 void getCodeForgeApiKeys;
+void getStudyForgeApiKeys;
 
 // --- Overview ----------------------------------------------------------
 
@@ -166,6 +171,15 @@ const AI_REQUEST_EVENTS: EventType[] = [
   "codeforge.docs",
   "codeforge.review",
   "codeforge.chat",
+  "studyforge.explain",
+  "studyforge.notes",
+  "studyforge.flashcards",
+  "studyforge.quiz",
+  "studyforge.homework",
+  "studyforge.planner",
+  "studyforge.summarize",
+  "studyforge.exam",
+  "studyforge.chat",
 ];
 
 export async function getOverviewCounts(events: AdminEvent[]): Promise<OverviewCounts> {
@@ -224,6 +238,15 @@ const FEATURE_EVENT_LABELS: Partial<Record<EventType, string>> = {
   "codeforge.docs": "CF: Docs",
   "codeforge.review": "CF: Review",
   "codeforge.chat": "CF: Chat",
+  "studyforge.explain": "SF: Explain Concepts",
+  "studyforge.notes": "SF: Notes Generator",
+  "studyforge.flashcards": "SF: Flashcards",
+  "studyforge.quiz": "SF: Quiz Generator",
+  "studyforge.homework": "SF: Homework Helper",
+  "studyforge.planner": "SF: Study Planner",
+  "studyforge.summarize": "SF: Notes Summarizer",
+  "studyforge.exam": "SF: Exam Practice",
+  "studyforge.chat": "SF: Chat",
 };
 
 export function buildFeatureUsageSeries(events: AdminEvent[], days: number): DailyFeatureUsage[] {
@@ -373,6 +396,18 @@ const CODEFORGE_EVENT_TYPES = new Set<EventType>([
   "codeforge.chat",
 ]);
 
+const STUDYFORGE_EVENT_TYPES = new Set<EventType>([
+  "studyforge.explain",
+  "studyforge.notes",
+  "studyforge.flashcards",
+  "studyforge.quiz",
+  "studyforge.homework",
+  "studyforge.planner",
+  "studyforge.summarize",
+  "studyforge.exam",
+  "studyforge.chat",
+]);
+
 export interface AdminOverviewBundle {
   overview: OverviewCounts;
   featureUsageDaily: DailyFeatureUsage[];
@@ -385,6 +420,8 @@ export interface AdminOverviewBundle {
   generatedAt: string;
   codeforgeOverview: ScopedOverviewCounts;
   codeforgeTopStats: ScopedTopStats;
+  studyforgeOverview: ScopedOverviewCounts;
+  studyforgeTopStats: ScopedTopStats;
 }
 
 export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
@@ -409,6 +446,12 @@ export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
     codeforgeTopStats: buildScopedTopStats(
       events,
       CODEFORGE_EVENT_TYPES,
+      (type) => FEATURE_EVENT_LABELS[type] ?? type
+    ),
+    studyforgeOverview: buildScopedOverview(events, STUDYFORGE_EVENT_TYPES),
+    studyforgeTopStats: buildScopedTopStats(
+      events,
+      STUDYFORGE_EVENT_TYPES,
       (type) => FEATURE_EVENT_LABELS[type] ?? type
     ),
   };

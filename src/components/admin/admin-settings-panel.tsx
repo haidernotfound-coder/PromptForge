@@ -13,6 +13,7 @@ const TOGGLES: { key: keyof SystemSettings; label: string; description: string }
   { key: "recipeForgeEnabled", label: "Recipe Forge", description: "Curated recipe catalog and insertion." },
   { key: "criticEnabled", label: "AI Prompt Critic", description: "Prompt quality scoring and auto-fix." },
   { key: "codeforgeEnabled", label: "CodeForge", description: "All 9 CodeForge tools and the AI Coding Chat." },
+  { key: "studyforgeEnabled", label: "StudyForge", description: "All 8 StudyForge tools and the AI Study Chat." },
 ];
 
 export function AdminSettingsPanel({

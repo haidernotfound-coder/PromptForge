@@ -28,8 +28,8 @@ const PRODUCTS: Product[] = [
     name: "StudyForge",
     tagline: "Turn notes and readings into flashcards, quizzes, and study guides.",
     icon: GraduationCap,
-    status: "soon",
-    href: "#",
+    status: "available",
+    href: "/products/studyforge",
   },
   {
     slug: "codeforge",
@@ -66,7 +66,7 @@ export function ProductGrid() {
           One account. A growing suite of AI-powered tools.
         </h2>
         <p className="mt-4 text-text-muted leading-relaxed">
-          Sign in once and unlock every tool as it ships — PromptForge and CodeForge are available now.
+          Sign in once and unlock every tool as it ships — PromptForge, CodeForge, and StudyForge are available now.
         </p>
       </motion.div>
 

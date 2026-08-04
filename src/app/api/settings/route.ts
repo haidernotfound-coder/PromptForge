@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     criticEnabled?: boolean;
     maintenanceMode?: boolean;
     codeforgeEnabled?: boolean;
+    studyforgeEnabled?: boolean;
   };
   try {
     body = await request.json();
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     "criticEnabled",
     "maintenanceMode",
     "codeforgeEnabled",
+    "studyforgeEnabled",
   ] as const) {
     if (typeof body[key] === "boolean") patch[key] = body[key];
   }

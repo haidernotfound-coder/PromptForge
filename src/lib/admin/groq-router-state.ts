@@ -7,9 +7,9 @@
  * a starting key, instead of guessing separately.
  */
 
-export type GroqPool = "ai" | "forge_ai" | "codeforge";
+export type GroqPool = "ai" | "forge_ai" | "codeforge" | "studyforge";
 
-const lastGoodIndex: Record<GroqPool, number> = { ai: 0, forge_ai: 0, codeforge: 0 };
+const lastGoodIndex: Record<GroqPool, number> = { ai: 0, forge_ai: 0, codeforge: 0, studyforge: 0 };
 
 export function getLastGoodKeyIndex(pool: GroqPool): number {
   return lastGoodIndex[pool];

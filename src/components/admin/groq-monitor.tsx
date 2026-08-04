@@ -14,6 +14,7 @@ const POOL_TITLES: Record<GroqPoolStatus["pool"], string> = {
   ai: "Prompt AI actions",
   forge_ai: "Forge AI chat",
   codeforge: "CodeForge tools + chat",
+  studyforge: "StudyForge tools + chat",
 };
 
 export function PoolCard({ pool }: { pool: GroqPoolStatus }) {
@@ -84,7 +85,8 @@ export function GroqMonitor({ data }: { data: GroqMonitorData }) {
           <div>
             <CardTitle className="text-base">Combined across all fallback pools</CardTitle>
             <CardDescription>
-              Prompt AI actions, Forge AI chat, and CodeForge each use fully independent key pools — this is their sum.
+              Prompt AI actions, Forge AI chat, CodeForge, and StudyForge each use fully independent key pools —
+              this is their sum.
             </CardDescription>
           </div>
         </CardHeader>
@@ -108,7 +110,7 @@ export function GroqMonitor({ data }: { data: GroqMonitorData }) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
         {data.pools.map((pool) => (
           <PoolCard key={pool.pool} pool={pool} />
         ))}

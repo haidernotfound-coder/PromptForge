@@ -93,6 +93,35 @@ export function isCodeForgeConfigured(): boolean {
 }
 
 /**
+ * StudyForge — the third NexPrompt product — gets its own, fully
+ * independent Groq key pool: `STUDYFORGE_GROQ_API_KEY_1` .. `_10` (and
+ * unsuffixed `STUDYFORGE_GROQ_API_KEY` as key 1, for a single-key setup).
+ * Ten slots — more than CodeForge's seven — since StudyForge fans out
+ * across eight one-shot tools (Explain Concepts, Notes Generator,
+ * Flashcards, Quiz Generator, Homework Helper, Study Planner, Notes
+ * Summarizer, Exam Practice) plus AI Study Chat, and is expected to see
+ * classroom-scale burst traffic (a whole class hitting Flashcards/Quiz at
+ * once before an exam). None of these keys are shared with, or interfere
+ * with, `GROQ_API_KEY_*`, `FORGE_AI_GROQ_API_KEY_*`, or
+ * `CODEFORGE_GROQ_API_KEY_*` — four fully separate pools, rotated, billed,
+ * and rate-limited independently.
+ */
+export function getStudyForgeApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.STUDYFORGE_GROQ_API_KEY_1 || process.env.STUDYFORGE_GROQ_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 10; i++) {
+    const key = process.env[`STUDYFORGE_GROQ_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export function isStudyForgeConfigured(): boolean {
+  return getStudyForgeApiKeys().length > 0;
+}
+
+/**
  * Env var name for each configured key, in order — e.g.
  * `["GROQ_API_KEY_1", "GROQ_API_KEY_2"]` (or `["GROQ_API_KEY"]` for a
  * single unsuffixed key). Used as a stable, non-secret label for the admin
@@ -126,6 +155,18 @@ export function getCodeForgeKeyLabels(): string[] {
   else if (process.env.CODEFORGE_GROQ_API_KEY) labels.push("CODEFORGE_GROQ_API_KEY");
   for (let i = 2; i <= 7; i++) {
     if (process.env[`CODEFORGE_GROQ_API_KEY_${i}`]) labels.push(`CODEFORGE_GROQ_API_KEY_${i}`);
+  }
+  return labels;
+}
+
+/** Same purpose as `getGroqKeyLabels`/`getForgeAiKeyLabels`, for the
+ *  10-slot StudyForge pool. */
+export function getStudyForgeKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.STUDYFORGE_GROQ_API_KEY_1) labels.push("STUDYFORGE_GROQ_API_KEY_1");
+  else if (process.env.STUDYFORGE_GROQ_API_KEY) labels.push("STUDYFORGE_GROQ_API_KEY");
+  for (let i = 2; i <= 10; i++) {
+    if (process.env[`STUDYFORGE_GROQ_API_KEY_${i}`]) labels.push(`STUDYFORGE_GROQ_API_KEY_${i}`);
   }
   return labels;
 }

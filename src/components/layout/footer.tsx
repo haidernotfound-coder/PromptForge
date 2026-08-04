@@ -6,6 +6,7 @@ const FOOTER_LINKS = {
     { href: "/#products", label: "Products" },
     { href: "/products/promptforge", label: "PromptForge" },
     { href: "/products/codeforge", label: "CodeForge" },
+    { href: "/products/studyforge", label: "StudyForge" },
   ],
   PromptForge: [
     { href: "/products/promptforge#features", label: "Features" },
@@ -34,8 +35,8 @@ export function Footer() {
               NexPrompt
             </Link>
             <p className="mt-3 text-sm text-text-muted max-w-xs">
-              One account, a growing forge of AI-powered tools — PromptForge and CodeForge,
-              ready across every model.
+              One account, a growing forge of AI-powered tools — PromptForge, CodeForge, and
+              StudyForge, ready across every model.
             </p>
           </div>
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (

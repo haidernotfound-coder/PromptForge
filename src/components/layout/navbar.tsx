@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: "/#products", label: "Products" },
   { href: "/products/promptforge", label: "PromptForge" },
   { href: "/products/codeforge", label: "CodeForge" },
+  { href: "/products/studyforge", label: "StudyForge" },
   { href: "/about", label: "About" },
 ];
 
@@ -81,6 +82,11 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
               <Button size="sm" variant="ghost" asChild>
                 <Link href="/products/codeforge">
                   Open CodeForge <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+              <Button size="sm" variant="ghost" asChild>
+                <Link href="/products/studyforge">
+                  Open StudyForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
               {isAdmin && (
@@ -161,6 +167,11 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
                             <Button variant="outline" asChild>
                               <Link href="/products/codeforge" onClick={() => setOpen(false)}>
                                 Open CodeForge <ArrowRight className="h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                            <Button variant="outline" asChild>
+                              <Link href="/products/studyforge" onClick={() => setOpen(false)}>
+                                Open StudyForge <ArrowRight className="h-3.5 w-3.5" />
                               </Link>
                             </Button>
                             {isAdmin && (
