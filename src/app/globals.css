@@ -140,3 +140,205 @@
     text-wrap: balance;
   }
 }
+
+/* ---------------------------------------------------------------------
+ * Shared AI-response Markdown rendering (react-markdown + rehype-highlight)
+ * Used by MarkdownRenderer (src/components/shared/markdown-renderer.tsx),
+ * the single renderer every product's AI output — tool results and chat —
+ * inherits automatically. Colors are theme-variable driven, not a canned
+ * highlight.js stylesheet, so code blocks match light/dark mode exactly
+ * like the rest of the app instead of clashing with it.
+ * --------------------------------------------------------------------- */
+.md-content {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: hsl(var(--text));
+  word-wrap: break-word;
+}
+
+.md-content > *:first-child {
+  margin-top: 0;
+}
+.md-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--text));
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+.md-content h1 {
+  font-size: 1.4em;
+}
+.md-content h2 {
+  font-size: 1.2em;
+}
+.md-content h3 {
+  font-size: 1.05em;
+}
+.md-content h4 {
+  font-size: 1em;
+}
+
+.md-content p {
+  margin: 0.75em 0;
+  white-space: pre-wrap;
+}
+
+.md-content strong {
+  font-weight: 600;
+  color: hsl(var(--text));
+}
+.md-content em {
+  font-style: italic;
+}
+
+.md-content ul,
+.md-content ol {
+  margin: 0.75em 0;
+  padding-left: 1.4em;
+}
+.md-content ul {
+  list-style: disc;
+}
+.md-content ol {
+  list-style: decimal;
+}
+.md-content li {
+  margin: 0.3em 0;
+}
+.md-content li > ul,
+.md-content li > ol {
+  margin: 0.3em 0;
+}
+
+.md-content a {
+  color: hsl(var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-content a:hover {
+  opacity: 0.85;
+}
+
+.md-content blockquote {
+  margin: 0.9em 0;
+  padding: 0.1em 1em;
+  border-left: 3px solid hsl(var(--accent) / 0.5);
+  color: hsl(var(--text-muted));
+}
+.md-content blockquote p {
+  margin: 0.5em 0;
+}
+
+.md-content hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.md-content code:not(pre code) {
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: hsl(var(--accent));
+}
+
+.md-content pre {
+  margin: 0.9em 0;
+  padding: 0.9em 1em;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface));
+  overflow-x: auto;
+}
+.md-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1.6;
+  color: hsl(var(--text));
+}
+
+.md-content table {
+  width: 100%;
+  margin: 0.9em 0;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  overflow-x: auto;
+  display: block;
+}
+.md-content th,
+.md-content td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.md-content th {
+  background: hsl(var(--surface));
+  font-weight: 600;
+  color: hsl(var(--text));
+}
+.md-content tr:nth-child(even) td {
+  background: hsl(var(--surface) / 0.5);
+}
+
+.md-content img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+/* rehype-highlight token colors — theme-variable driven */
+.md-content .hljs-comment,
+.md-content .hljs-quote {
+  color: hsl(var(--text-faint));
+  font-style: italic;
+}
+.md-content .hljs-keyword,
+.md-content .hljs-selector-tag,
+.md-content .hljs-literal,
+.md-content .hljs-title.function_ {
+  color: hsl(var(--accent));
+}
+.md-content .hljs-string,
+.md-content .hljs-attr,
+.md-content .hljs-symbol,
+.md-content .hljs-bullet,
+.md-content .hljs-addition {
+  color: hsl(var(--success));
+}
+.md-content .hljs-number,
+.md-content .hljs-literal,
+.md-content .hljs-variable,
+.md-content .hljs-template-variable {
+  color: hsl(var(--brass));
+}
+.md-content .hljs-title,
+.md-content .hljs-title.class_,
+.md-content .hljs-type {
+  color: hsl(var(--text));
+  font-weight: 600;
+}
+.md-content .hljs-deletion,
+.md-content .hljs-regexp {
+  color: hsl(var(--danger));
+}
+.md-content .hljs-emphasis {
+  font-style: italic;
+}
+.md-content .hljs-strong {
+  font-weight: 600;
+}
+

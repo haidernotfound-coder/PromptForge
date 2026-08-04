@@ -286,6 +286,93 @@ function localToolReply(tool: StudyForgeTool, input: string, opts: RunToolOption
   }
 }
 
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface StudyForgeFlashcardsResult {
+  cards: Flashcard[];
+  remote: boolean;
+}
+
+/** Runs the Flashcards tool and returns a structured deck (never markdown/
+ *  numbered text) — the API asks the model for strict JSON and this parses
+ *  it; if StudyForge's keys aren't configured, the request fails, or the
+ *  response can't be parsed as a deck, falls back to a locally generated
+ *  structured deck so the flashcard UI always has real card objects to
+ *  render. */
+export async function runStudyForgeFlashcards(
+  input: string,
+  opts: RunToolOptions = {}
+): Promise<StudyForgeFlashcardsResult> {
+  if (!input.trim()) {
+    return { cards: [], remote: false };
+  }
+
+  try {
+    const res = await fetch("/api/studyforge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "tool",
+        tool: "flashcards",
+        input,
+        detail: opts.detail,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const cards = parseFlashcards(data.cards);
+      if (cards.length > 0) {
+        return { cards, remote: true };
+      }
+    }
+  } catch {
+    // fall through to local heuristic
+  }
+
+  return { cards: localFlashcards(input, opts), remote: false };
+}
+
+function parseFlashcards(raw: unknown): Flashcard[] {
+  if (!Array.isArray(raw)) return [];
+  const cards: Flashcard[] = [];
+  for (const entry of raw) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as Record<string, unknown>).front === "string" &&
+      typeof (entry as Record<string, unknown>).back === "string"
+    ) {
+      const front = (entry as Record<string, string>).front.trim();
+      const back = (entry as Record<string, string>).back.trim();
+      if (front && back) cards.push({ front, back });
+    }
+  }
+  return cards;
+}
+
+/** Zero-setup fallback deck — structured, not copied sentences, so the
+ *  interactive flashcard UI works before any Groq key is configured. Mixes
+ *  a definition, an example, a comparison, and a practice-question card so
+ *  the shape matches what the real model is asked to produce. */
+function localFlashcards(input: string, opts: RunToolOptions): Flashcard[] {
+  const topic = firstLine(input);
+  const count = Number.parseInt(opts.detail ?? "", 10);
+  const base: Flashcard[] = [
+    { front: `Define: ${topic}`, back: "(A real, concise definition will appear here once a StudyForge key is configured.)" },
+    { front: `Why does "${topic}" matter?`, back: "(A real explanation of its significance will appear here once a key is configured.)" },
+    { front: `Give a real-world example of ${topic}.`, back: "(A concrete example will appear here once a key is configured.)" },
+    { front: `How does ${topic} compare to a related concept?`, back: "(A real comparison will appear here once a key is configured.)" },
+    { front: `Practice: apply ${topic} to a new scenario.`, back: "(A real practice question and answer will appear here once a key is configured.)" },
+  ];
+  const target = Number.isFinite(count) && count > 0 ? Math.min(count, 30) : base.length;
+  const cards: Flashcard[] = [];
+  for (let i = 0; i < target; i++) cards.push(base[i % base.length]);
+  return cards;
+}
+
 function firstLine(text: string): string {
   const line = text.trim().split("\n")[0] ?? "";
   return line.length > 80 ? `${line.slice(0, 80)}…` : line;

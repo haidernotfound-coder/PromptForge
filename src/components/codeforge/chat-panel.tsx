@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/prompts/confirm-dialog";
 import { cn } from "@/lib/utils";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import {
   type CodeForgeChatMessage,
   loadCodeForgeChat,
@@ -136,11 +137,17 @@ export function CodeForgeChatPanel() {
               )}
               <div
                 className={cn(
-                  "group relative max-w-[80%] whitespace-pre-wrap rounded-lg px-3.5 py-2.5 text-sm leading-relaxed",
-                  m.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface text-text"
+                  "group relative max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed",
+                  m.role === "user"
+                    ? "whitespace-pre-wrap bg-accent text-accent-foreground"
+                    : "bg-surface text-text"
                 )}
               >
-                {m.content}
+                {m.role === "assistant" ? (
+                  <MarkdownRenderer content={m.content} />
+                ) : (
+                  m.content
+                )}
                 {m.role === "assistant" && (
                   <button
                     type="button"

@@ -4,15 +4,27 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 
+/**
+ * Shared "AI tool result" panel used by every product's one-shot tools
+ * (CodeForge, StudyForge, and future ones) — despite the CodeForge-era
+ * name, it isn't CodeForge-specific. Renders through the shared
+ * MarkdownRenderer so headings, lists, tables, links, and (for code
+ * results) syntax-highlighted fenced code blocks all render properly
+ * instead of as a flat text block.
+ */
 export function CodeForgeOutputBlock({
   content,
   isCode,
+  language,
   emptyLabel = "Output will appear here.",
 }: {
   content: string;
   isCode: boolean;
+  /** For isCode results, the language to syntax-highlight as (defaults to
+   *  plain-text detection by rehype-highlight if omitted). */
+  language?: string;
   emptyLabel?: string;
 }) {
   const [copied, setCopied] = React.useState(false);
@@ -28,6 +40,14 @@ export function CodeForgeOutputBlock({
       () => toast.error("Couldn't copy — try selecting the text manually")
     );
   }
+
+  // Code-tool results (Generate, Fix, Optimize, etc.) usually come back as
+  // a raw snippet, not already-fenced Markdown — wrap it in a fence so it
+  // flows through the same highlighted-code renderer as everything else.
+  const displayContent =
+    isCode && content.trim() && !content.trim().startsWith("```")
+      ? `\`\`\`${language ?? ""}\n${content}\n\`\`\``
+      : content;
 
   return (
     <div className="relative rounded-md border border-border bg-surface">
@@ -46,14 +66,9 @@ export function CodeForgeOutputBlock({
         </Button>
       </div>
       {content.trim() ? (
-        <pre
-          className={cn(
-            "max-h-[520px] overflow-auto whitespace-pre-wrap break-words p-4 text-sm leading-relaxed",
-            isCode && "font-mono"
-          )}
-        >
-          {content}
-        </pre>
+        <div className="max-h-[520px] overflow-auto p-4">
+          <MarkdownRenderer content={displayContent} />
+        </div>
       ) : (
         <p className="p-4 text-sm text-text-faint">{emptyLabel}</p>
       )}

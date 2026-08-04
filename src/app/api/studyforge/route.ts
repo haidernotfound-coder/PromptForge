@@ -70,9 +70,15 @@ function toolSystemPrompt(tool: StudyForgeTool, detail: string): string {
     case "flashcards":
       return [
         base,
-        `Generate a deck of question/answer flashcards on the given topic or material.${detailHint}`,
-        "Format each card as \"Q: ... / A: ...\" on its own pair of lines, numbered. Keep answers concise" +
-          " and precise — flashcards are for active recall, not essays. Default to 10 cards if no count" +
+        `Generate a deck of flashcards on the given topic or material.${detailHint}`,
+        "Respond with ONLY a single JSON object of the exact shape {\"cards\":[{\"front\":\"...\",\"back\":\"...\"}]}" +
+          " — no markdown, no numbered list, no commentary before or after it, and no code fences.",
+        "Each card's \"front\" is a short prompt (a question, a term to define, a scenario, or an" +
+          " instruction like \"compare X and Y\") and \"back\" is the concise answer. Vary the cards" +
+          " across types: plain definitions, why-it-matters explanations, concrete real-world" +
+          " examples, comparisons between related concepts, and short practice questions that make" +
+          " the student apply the idea — never sentences copied straight from a textbook. Keep each" +
+          " side to 1-3 sentences so cards work for active recall. Default to 10 cards if no count" +
           " is specified.",
       ].join(" ");
     case "quiz":
@@ -136,7 +142,8 @@ type GroqCallResult =
 
 async function callGroq(
   apiKey: string,
-  messages: { role: "system" | "user" | "assistant"; content: string }[]
+  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  opts: { json?: boolean } = {}
 ): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -149,6 +156,7 @@ async function callGroq(
       max_tokens: 3000,
       temperature: 0.4,
       messages,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
   });
 
@@ -172,6 +180,41 @@ async function callGroq(
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+/** Parses the model's `{"cards":[{"front":"...","back":"..."}]}` JSON
+ *  response into a validated array, stripping stray code fences some
+ *  models add despite instructions. Returns null (never throws) if the
+ *  shape doesn't match, so the caller can fall back cleanly. */
+function parseFlashcardsJson(raw: string): { front: string; back: string }[] | null {
+  const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).cards)
+      ? (parsed as Record<string, unknown>).cards
+      : null;
+  if (!Array.isArray(list)) return null;
+
+  const cards: { front: string; back: string }[] = [];
+  for (const entry of list) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as Record<string, unknown>).front === "string" &&
+      typeof (entry as Record<string, unknown>).back === "string"
+    ) {
+      const front = (entry as Record<string, string>).front.trim();
+      const back = (entry as Record<string, string>).back.trim();
+      if (front && back) cards.push({ front, back });
+    }
+  }
+  return cards.length > 0 ? cards : null;
 }
 
 type RequestBody =
@@ -208,6 +251,7 @@ export async function POST(request: Request) {
 
   let messages: { role: "system" | "user" | "assistant"; content: string }[];
   let eventType: EventType;
+  let isFlashcards = false;
 
   if (body.mode === "tool") {
     const tool = body.tool;
@@ -227,6 +271,7 @@ export async function POST(request: Request) {
       { role: "user", content: input },
     ];
     eventType = TOOL_EVENT_TYPES[tool];
+    isFlashcards = tool === "flashcards";
   } else if (body.mode === "chat") {
     const validRoles = new Set(["user", "assistant"]);
     const cleanMessages = (body.messages ?? []).filter(
@@ -259,12 +304,22 @@ export async function POST(request: Request) {
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
-      const result = await callGroq(keys[i], messages);
+      const result = await callGroq(keys[i], messages, { json: isFlashcards });
       await recordGroqUsage({ pool: "studyforge", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {
         setLastGoodKeyIndex("studyforge", i); // remember this key for next time
         await recordEvent({ userLabel: session?.email, eventType, success: true });
+        if (isFlashcards) {
+          const cards = parseFlashcardsJson(result.output);
+          if (cards) {
+            return NextResponse.json({ cards });
+          }
+          // Model didn't return valid JSON — treat as a provider failure so
+          // the client falls back to its local structured deck instead of
+          // rendering broken/unparseable output.
+          return NextResponse.json({ error: "StudyForge could not parse a flashcard deck" }, { status: 502 });
+        }
         return NextResponse.json({ output: result.output });
       }
 

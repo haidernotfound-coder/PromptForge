@@ -1,7 +1,7 @@
-import { StudyForgeToolPanel } from "@/components/studyforge/tool-panel";
+import { StudyForgeFlashcardsPanel } from "@/components/studyforge/flashcards-panel";
 
 export const metadata = { title: "Flashcards" };
 
 export default function StudyForgeFlashcardsPage() {
-  return <StudyForgeToolPanel tool="flashcards" />;
+  return <StudyForgeFlashcardsPanel />;
 }

@@ -16,6 +16,7 @@ import {
   sendForgeAiMessage,
   extractApplicableText,
 } from "@/lib/forge-ai";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -210,11 +211,17 @@ export function ForgeAiPanel({
                 <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed",
-                      m.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface text-text"
+                      "max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed",
+                      m.role === "user"
+                        ? "whitespace-pre-wrap bg-accent text-accent-foreground"
+                        : "bg-surface text-text"
                     )}
                   >
-                    {m.content}
+                    {m.role === "assistant" ? (
+                      <MarkdownRenderer content={m.content} />
+                    ) : (
+                      m.content
+                    )}
                   </div>
                 </div>
               ))
