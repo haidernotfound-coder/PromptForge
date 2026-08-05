@@ -1,12 +1,18 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Card supports an optional `interactive` styling via className (e.g.
+ * `hover:-translate-y-0.5 hover:shadow-card-hover`) — kept opt-in per
+ * usage rather than baked into the base so static cards (settings panels,
+ * form containers) don't get an unwanted hover lift.
+ */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border border-border bg-surface-raised text-text shadow-sm",
+        "rounded-lg border border-border bg-surface-raised text-text shadow-card transition-shadow duration-200 ease-smooth",
         className
       )}
       {...props}

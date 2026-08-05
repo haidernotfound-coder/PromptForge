@@ -4,21 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 ease-smooth disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 active:scale-[0.98]",
   {
     variants: {
       variant: {
         default:
-          "bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm",
+          "bg-gradient-accent text-accent-foreground shadow-soft hover:shadow-glow-sm",
         brass:
-          "bg-brass text-bg hover:bg-brass/90 shadow-sm",
+          "bg-brass text-bg shadow-soft hover:bg-brass/90 hover:shadow-md",
         destructive:
-          "bg-danger text-white hover:bg-danger/90 shadow-sm",
+          "bg-danger text-white shadow-soft hover:bg-danger/90 hover:shadow-md",
         outline:
-          "border border-border bg-transparent hover:bg-surface text-text",
+          "border border-border bg-transparent text-text hover:border-border-strong hover:bg-surface",
         secondary:
-          "bg-surface text-text hover:bg-surface-raised border border-border",
-        ghost: "hover:bg-surface text-text",
+          "bg-surface text-text border border-border hover:bg-surface-raised hover:border-border-strong",
+        ghost: "text-text hover:bg-surface",
         link: "text-accent underline-offset-4 hover:underline",
       },
       size: {

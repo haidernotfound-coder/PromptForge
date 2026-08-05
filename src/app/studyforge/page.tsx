@@ -1,56 +1,82 @@
-import Link from "next/link";
-import { ArrowRight, MessagesSquare } from "lucide-react";
+import {
+  GraduationCap,
+  Sparkles,
+  Zap,
+  ShieldCheck,
+  Lightbulb,
+  NotebookPen,
+  Layers,
+  ListChecks,
+  PencilLine,
+  CalendarClock,
+  FileText,
+  ScrollText,
+  MessagesSquare,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ProductHero } from "@/components/dashboard/product-hero";
+import { ToolGrid, type ToolGridItem } from "@/components/dashboard/tool-grid";
 import { getAppSession } from "@/lib/session";
 import { isStudyForgeConfigured } from "@/lib/supabase/config";
 import { STUDYFORGE_TOOLS } from "@/lib/studyforge";
 
 export const metadata = { title: "StudyForge" };
 
+const TOOL_VISUALS: Record<string, { icon: typeof Lightbulb; accent: ToolGridItem["accent"] }> = {
+  explain: { icon: Lightbulb, accent: "violet" },
+  notes: { icon: NotebookPen, accent: "blue" },
+  flashcards: { icon: Layers, accent: "emerald" },
+  quiz: { icon: ListChecks, accent: "amber" },
+  homework: { icon: PencilLine, accent: "pink" },
+  planner: { icon: CalendarClock, accent: "cyan" },
+  summarize: { icon: FileText, accent: "teal" },
+  exam: { icon: ScrollText, accent: "indigo" },
+};
+
 export default async function StudyForgeOverviewPage() {
   const session = await getAppSession();
   const firstName = session.name.split(" ")[0];
   const configured = isStudyForgeConfigured();
 
+  const items: ToolGridItem[] = [
+    ...STUDYFORGE_TOOLS.map((tool) => ({
+      id: tool.id,
+      label: tool.label,
+      description: tool.description,
+      href: tool.href,
+      icon: TOOL_VISUALS[tool.id]?.icon ?? Lightbulb,
+      accent: TOOL_VISUALS[tool.id]?.accent ?? "violet",
+    })),
+    {
+      id: "chat",
+      label: "AI Study Chat",
+      description: "A free-form chat for anything study-related.",
+      href: "/studyforge/chat",
+      icon: MessagesSquare,
+      accent: "rose",
+      badge: "New",
+    },
+  ];
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Welcome to StudyForge, {firstName}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {configured
+      <ProductHero
+        title="Welcome to StudyForge, "
+        highlight={firstName}
+        description={
+          configured
             ? "Nine AI-assisted tools for learning, reviewing, and testing yourself — running on a real model provider."
-            : "Nine AI-assisted tools for learning, reviewing, and testing yourself — currently running in demo mode."}
-        </p>
-      </div>
+            : "Nine AI-assisted tools for learning, reviewing, and testing yourself — currently running in demo mode."
+        }
+        icon={GraduationCap}
+        stats={[
+          { icon: Sparkles, label: "AI Tools", value: "9" },
+          { icon: Zap, label: "Model Provider", value: "Groq" },
+          { icon: ShieldCheck, label: "Private & Secure", value: "100%" },
+        ]}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {STUDYFORGE_TOOLS.map((tool) => (
-          <Link key={tool.id} href={tool.href} className="group">
-            <Card className="h-full transition-colors group-hover:border-accent/50">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center justify-between">
-                  {tool.label}
-                  <ArrowRight className="h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
-                </CardTitle>
-                <CardDescription>{tool.description}</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
-        <Link href="/studyforge/chat" className="group">
-          <Card className="h-full border-accent/30 transition-colors group-hover:border-accent/60">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <MessagesSquare className="h-4 w-4 text-accent" /> AI Study Chat
-                </span>
-                <ArrowRight className="h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
-              </CardTitle>
-              <CardDescription>A free-form chat for anything study-related.</CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-      </div>
+      <ToolGrid items={items} />
 
       <Card>
         <CardHeader>

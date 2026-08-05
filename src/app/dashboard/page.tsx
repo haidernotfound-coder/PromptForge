@@ -1,4 +1,6 @@
+import { Sparkles, Zap, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ProductHero } from "@/components/dashboard/product-hero";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { RecentPrompts } from "@/components/dashboard/recent-prompts";
 import { getAppSession } from "@/lib/session";
@@ -13,16 +15,21 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Welcome, {firstName}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {session.isReal
+      <ProductHero
+        title="Welcome, "
+        highlight={firstName}
+        description={
+          session.isReal
             ? "Here's what's happening in your workspace."
-            : "Here's what's happening in your demo workspace."}
-        </p>
-      </div>
+            : "Here's what's happening in your demo workspace."
+        }
+        icon={Sparkles}
+        stats={[
+          { icon: Sparkles, label: "AI Assist", value: "4x" },
+          { icon: Zap, label: "Model Provider", value: "Groq" },
+          { icon: ShieldCheck, label: "Private & Secure", value: "100%" },
+        ]}
+      />
 
       <DashboardStats />
 

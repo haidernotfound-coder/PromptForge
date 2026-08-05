@@ -1,56 +1,82 @@
-import Link from "next/link";
-import { ArrowRight, MessagesSquare } from "lucide-react";
+import {
+  Terminal,
+  Sparkles,
+  Zap,
+  ShieldCheck,
+  Code2,
+  Wrench,
+  Gauge,
+  BookOpenText,
+  Repeat,
+  FlaskConical,
+  FileText,
+  ClipboardCheck,
+  MessagesSquare,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ProductHero } from "@/components/dashboard/product-hero";
+import { ToolGrid, type ToolGridItem } from "@/components/dashboard/tool-grid";
 import { getAppSession } from "@/lib/session";
 import { isCodeForgeConfigured } from "@/lib/supabase/config";
 import { CODEFORGE_TOOLS } from "@/lib/codeforge";
 
 export const metadata = { title: "CodeForge" };
 
+const TOOL_VISUALS: Record<string, { icon: typeof Code2; accent: ToolGridItem["accent"] }> = {
+  generate: { icon: Code2, accent: "violet" },
+  fix: { icon: Wrench, accent: "amber" },
+  optimize: { icon: Gauge, accent: "emerald" },
+  explain: { icon: BookOpenText, accent: "blue" },
+  convert: { icon: Repeat, accent: "cyan" },
+  tests: { icon: FlaskConical, accent: "pink" },
+  docs: { icon: FileText, accent: "teal" },
+  review: { icon: ClipboardCheck, accent: "indigo" },
+};
+
 export default async function CodeForgeOverviewPage() {
   const session = await getAppSession();
   const firstName = session.name.split(" ")[0];
   const configured = isCodeForgeConfigured();
 
+  const items: ToolGridItem[] = [
+    ...CODEFORGE_TOOLS.map((tool) => ({
+      id: tool.id,
+      label: tool.label,
+      description: tool.description,
+      href: tool.href,
+      icon: TOOL_VISUALS[tool.id]?.icon ?? Code2,
+      accent: TOOL_VISUALS[tool.id]?.accent ?? "violet",
+    })),
+    {
+      id: "chat",
+      label: "AI Coding Chat",
+      description: "A free-form chat for anything code-related.",
+      href: "/codeforge/chat",
+      icon: MessagesSquare,
+      accent: "rose",
+      badge: "New",
+    },
+  ];
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Welcome to CodeForge, {firstName}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {configured
+      <ProductHero
+        title="Welcome to CodeForge, "
+        highlight={firstName}
+        description={
+          configured
             ? "Nine AI-assisted tools for writing, fixing, and understanding code — running on a real model provider."
-            : "Nine AI-assisted tools for writing, fixing, and understanding code — currently running in demo mode."}
-        </p>
-      </div>
+            : "Nine AI-assisted tools for writing, fixing, and understanding code — currently running in demo mode."
+        }
+        icon={Terminal}
+        stats={[
+          { icon: Sparkles, label: "AI Tools", value: "9" },
+          { icon: Zap, label: "Model Provider", value: "Groq" },
+          { icon: ShieldCheck, label: "Private & Secure", value: "100%" },
+        ]}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {CODEFORGE_TOOLS.map((tool) => (
-          <Link key={tool.id} href={tool.href} className="group">
-            <Card className="h-full transition-colors group-hover:border-accent/50">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center justify-between">
-                  {tool.label}
-                  <ArrowRight className="h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
-                </CardTitle>
-                <CardDescription>{tool.description}</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
-        <Link href="/codeforge/chat" className="group">
-          <Card className="h-full border-accent/30 transition-colors group-hover:border-accent/60">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <MessagesSquare className="h-4 w-4 text-accent" /> AI Coding Chat
-                </span>
-                <ArrowRight className="h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
-              </CardTitle>
-              <CardDescription>A free-form chat for anything code-related.</CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-      </div>
+      <ToolGrid items={items} />
 
       <Card>
         <CardHeader>
