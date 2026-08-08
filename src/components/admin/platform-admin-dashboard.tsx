@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShieldCheck, Sparkles, GraduationCap, Code2, Lock, RefreshCw } from "lucide-react";
+import { ShieldCheck, Sparkles, GraduationCap, Code2, Presentation, Lock, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import type { AdminBundle } from "@/components/admin/types";
 import { AdminDashboard } from "@/components/admin/admin-dashboard";
 import { CodeForgeAdminPanel } from "@/components/admin/codeforge-admin-panel";
 import { StudyForgeAdminPanel } from "@/components/admin/studyforge-admin-panel";
+import { PptForgeAdminPanel } from "@/components/admin/pptforge-admin-panel";
 
 const COMING_SOON_PRODUCTS: { slug: string; name: string; icon: typeof Lock }[] = [];
 
@@ -60,6 +61,9 @@ export function PlatformAdminDashboard({
           </TabsTrigger>
           <TabsTrigger value="studyforge" className="gap-1.5">
             <GraduationCap className="h-3.5 w-3.5" /> StudyForge
+          </TabsTrigger>
+          <TabsTrigger value="pptforge" className="gap-1.5">
+            <Presentation className="h-3.5 w-3.5" /> PPTForge
           </TabsTrigger>
           {COMING_SOON_PRODUCTS.map((p) => (
             <TabsTrigger key={p.slug} value={p.slug} disabled className="gap-1.5 opacity-50">
@@ -114,6 +118,24 @@ export function PlatformAdminDashboard({
               </Button>
             </div>
             <StudyForgeAdminPanel data={data} onChanged={refresh} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pptforge">
+          <div className="pt-4 space-y-4">
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={refresh}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+            <PptForgeAdminPanel data={data} onChanged={refresh} />
           </div>
         </TabsContent>
       </Tabs>

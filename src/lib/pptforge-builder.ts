@@ -233,29 +233,41 @@ function slideHeading(slide: PptxGenJS.Slide, theme: Theme, title: string) {
   slide.addShape("rect", { x: MARGIN, y: 1.25, w: 1.1, h: 0.05, fill: { color: theme.accent } });
 }
 
+/** Renders a bullet list so it actually fills its box rather than pinning a
+ *  short list to the top and leaving the rest of the slide visibly blank.
+ *  Scales font size, paragraph spacing, and vertical alignment based on how
+ *  many bullets there are — few bullets get bigger type, more breathing
+ *  room, and are centered in the box; a full list behaves as before. */
 function bulletList(
   slide: PptxGenJS.Slide,
   theme: Theme,
   bullets: string[],
-  opts: { x: number; y: number; w: number; h: number }
+  opts: { x: number; y: number; w: number; h: number },
+  maxExpected = 5
 ) {
   if (bullets.length === 0) return;
+
+  const fullness = Math.min(1, bullets.length / maxExpected);
+  const fontSize = Math.round(16 + (1 - fullness) * 6); // 16 -> up to 22pt when sparse
+  const paraSpaceAfter = Math.round(14 + (1 - fullness) * 18); // 14 -> up to 32pt gaps
+  const valign: "top" | "middle" = bullets.length <= Math.ceil(maxExpected / 2) ? "middle" : "top";
+
   slide.addText(
     bullets.map((b) => ({
       text: b,
-      options: { bullet: { code: "2022", indent: 18 }, breakLine: true, paraSpaceAfter: 14 },
+      options: { bullet: { code: "2022", indent: 18 }, breakLine: true, paraSpaceAfter },
     })),
     {
       x: opts.x,
       y: opts.y,
       w: opts.w,
       h: opts.h,
-      fontSize: 16,
+      fontSize,
       color: theme.inkMuted,
       fontFace: theme.bodyFont,
-      valign: "top",
+      valign,
       align: "left",
-      lineSpacingMultiple: 1.15,
+      lineSpacingMultiple: 1.25,
     }
   );
 }
@@ -292,7 +304,7 @@ function columnBlock(
     color: theme.accent,
     fontFace: theme.headingFont,
   });
-  bulletList(slide, theme, capBullets(col.bullets, 4), { x: x + 0.3, y: 2.45, w: w - 0.6, h: SLIDE_H - 3.1 });
+  bulletList(slide, theme, capBullets(col.bullets, 4), { x: x + 0.3, y: 2.45, w: w - 0.6, h: SLIDE_H - 3.1 }, 4);
 }
 
 function twoColumnSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
@@ -351,18 +363,20 @@ function comparisonSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan)
     fontFace: theme.headingFont,
   });
 
-  bulletList(slide, theme, capBullets(plan.left?.bullets, 4), {
-    x: MARGIN + 0.25,
-    y: 2.4,
-    w: colW - 0.5,
-    h: SLIDE_H - 3,
-  });
-  bulletList(slide, theme, capBullets(plan.right?.bullets, 4), {
-    x: MARGIN + colW + gap + 0.25,
-    y: 2.4,
-    w: colW - 0.5,
-    h: SLIDE_H - 3,
-  });
+  bulletList(
+    slide,
+    theme,
+    capBullets(plan.left?.bullets, 4),
+    { x: MARGIN + 0.25, y: 2.4, w: colW - 0.5, h: SLIDE_H - 3 },
+    4
+  );
+  bulletList(
+    slide,
+    theme,
+    capBullets(plan.right?.bullets, 4),
+    { x: MARGIN + colW + gap + 0.25, y: 2.4, w: colW - 0.5, h: SLIDE_H - 3 },
+    4
+  );
   return slide;
 }
 
@@ -420,7 +434,7 @@ function imageSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
     y: 1.9,
     w: imgX - MARGIN - 0.4,
     h: SLIDE_H - 2.6,
-  });
+  }, 5);
   return slide;
 }
 
@@ -476,9 +490,25 @@ function tableSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
   const headers = Array.isArray(plan.headers) && plan.headers.length > 0 ? plan.headers : ["Column A", "Column B"];
   const rows = (Array.isArray(plan.rows) ? plan.rows : []).slice(0, 8);
 
+  // A table with only 2-3 rows rendered at its minimum height leaves the
+  // bottom half of the slide blank. Instead of sizing to content, always
+  // fill the full available box and scale font size / row padding up when
+  // there are fewer rows, same idea as bulletList() above.
+  const availableH = SLIDE_H - 2.4;
+  const fullness = Math.min(1, rows.length / 6);
+  const headerFontSize = Math.round(13 + (1 - fullness) * 5);
+  const cellFontSize = Math.round(12 + (1 - fullness) * 6);
+
   const headerRow: PptxGenJS.TableRow = headers.map((h) => ({
     text: h,
-    options: { bold: true, color: "FFFFFF", fill: { color: theme.accent }, fontFace: theme.bodyFont, fontSize: 13 },
+    options: {
+      bold: true,
+      color: "FFFFFF",
+      fill: { color: theme.accent },
+      fontFace: theme.bodyFont,
+      fontSize: headerFontSize,
+      valign: "middle",
+    },
   }));
   const bodyRows: PptxGenJS.TableRow[] = rows.map((row, i) =>
     headers.map((_, ci) => ({
@@ -487,7 +517,8 @@ function tableSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
         color: theme.ink,
         fill: { color: i % 2 === 0 ? theme.bg : theme.panel },
         fontFace: theme.bodyFont,
-        fontSize: 12,
+        fontSize: cellFontSize,
+        valign: "middle",
       },
     }))
   );
@@ -496,7 +527,7 @@ function tableSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
     x: MARGIN,
     y: 1.7,
     w: SLIDE_W - MARGIN * 2,
-    h: Math.min(SLIDE_H - 2.4, 0.5 * (bodyRows.length + 1)),
+    h: availableH,
     border: { type: "solid", color: theme.panel, pt: 1 },
     autoPage: false,
   });

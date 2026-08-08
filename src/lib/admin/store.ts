@@ -66,6 +66,7 @@ export interface SystemSettings {
   maintenanceMode: boolean;
   codeforgeEnabled: boolean;
   studyforgeEnabled: boolean;
+  pptforgeEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -75,6 +76,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   maintenanceMode: false,
   codeforgeEnabled: true,
   studyforgeEnabled: true,
+  pptforgeEnabled: true,
 };
 
 // --- In-memory fallback (demo mode / no Supabase) --------------------------
@@ -280,7 +282,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       const { data, error } = (await supabase
         ?.from("system_settings")
         .select(
-          "forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled, studyforge_enabled"
+          "forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled, studyforge_enabled, pptforge_enabled"
         )
         .eq("id", true)
         .maybeSingle()) ?? { data: null, error: null };
@@ -292,6 +294,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
           maintenanceMode: data.maintenance_mode,
           codeforgeEnabled: data.codeforge_enabled ?? true,
           studyforgeEnabled: data.studyforge_enabled ?? true,
+          pptforgeEnabled: data.pptforge_enabled ?? true,
         };
       }
     } catch {
@@ -314,10 +317,11 @@ export async function updateSystemSettings(patch: Partial<SystemSettings>): Prom
           ...(patch.maintenanceMode !== undefined ? { maintenance_mode: patch.maintenanceMode } : {}),
           ...(patch.codeforgeEnabled !== undefined ? { codeforge_enabled: patch.codeforgeEnabled } : {}),
           ...(patch.studyforgeEnabled !== undefined ? { studyforge_enabled: patch.studyforgeEnabled } : {}),
+          ...(patch.pptforgeEnabled !== undefined ? { pptforge_enabled: patch.pptforgeEnabled } : {}),
         })
         .eq("id", true)
         .select(
-          "forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled, studyforge_enabled"
+          "forge_ai_enabled, recipe_forge_enabled, critic_enabled, maintenance_mode, codeforge_enabled, studyforge_enabled, pptforge_enabled"
         )
         .maybeSingle()) ?? { data: null, error: null };
       if (!error && data) {
@@ -328,6 +332,7 @@ export async function updateSystemSettings(patch: Partial<SystemSettings>): Prom
           maintenanceMode: data.maintenance_mode,
           codeforgeEnabled: data.codeforge_enabled ?? true,
           studyforgeEnabled: data.studyforge_enabled ?? true,
+          pptforgeEnabled: data.pptforge_enabled ?? true,
         };
       }
     } catch {

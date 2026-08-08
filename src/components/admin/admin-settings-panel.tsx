@@ -14,6 +14,7 @@ const TOGGLES: { key: keyof SystemSettings; label: string; description: string }
   { key: "criticEnabled", label: "AI Prompt Critic", description: "Prompt quality scoring and auto-fix." },
   { key: "codeforgeEnabled", label: "CodeForge", description: "All 9 CodeForge tools and the AI Coding Chat." },
   { key: "studyforgeEnabled", label: "StudyForge", description: "All 8 StudyForge tools and the AI Study Chat." },
+  { key: "pptforgeEnabled", label: "PPTForge", description: "AI slide deck generation and .pptx download." },
 ];
 
 export function AdminSettingsPanel({

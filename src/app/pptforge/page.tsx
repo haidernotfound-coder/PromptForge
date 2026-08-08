@@ -17,6 +17,7 @@ import {
   downloadPptForgeBlob,
   type PptForgeStyle,
 } from "@/lib/pptforge";
+import { addPptForgeHistoryEntry, getPptForgePrefs } from "@/lib/pptforge-history";
 
 export default function PptForgePage() {
   const [topic, setTopic] = React.useState("");
@@ -26,6 +27,12 @@ export default function PptForgePage() {
   const [loading, setLoading] = React.useState(false);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
   const [lastFile, setLastFile] = React.useState<{ blob: Blob; filename: string } | null>(null);
+
+  React.useEffect(() => {
+    const prefs = getPptForgePrefs();
+    setStyle(prefs.defaultStyle as PptForgeStyle);
+    setSlideCount(prefs.defaultSlideCount);
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -57,6 +64,7 @@ export default function PptForgePage() {
       }
       setLastFile({ blob: result.blob, filename: result.filename });
       downloadPptForgeBlob(result.blob, result.filename);
+      addPptForgeHistoryEntry({ topic, filename: result.filename, style, slideCount, detail: detail || undefined });
       toast.success("Presentation generated");
     } finally {
       setLoading(false);

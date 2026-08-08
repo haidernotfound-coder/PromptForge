@@ -183,6 +183,7 @@ const AI_REQUEST_EVENTS: EventType[] = [
   "studyforge.summarize",
   "studyforge.exam",
   "studyforge.chat",
+  "pptforge.generate",
 ];
 
 export async function getOverviewCounts(events: AdminEvent[]): Promise<OverviewCounts> {
@@ -250,6 +251,7 @@ const FEATURE_EVENT_LABELS: Partial<Record<EventType, string>> = {
   "studyforge.summarize": "SF: Notes Summarizer",
   "studyforge.exam": "SF: Exam Practice",
   "studyforge.chat": "SF: Chat",
+  "pptforge.generate": "PPT: Generate",
 };
 
 export function buildFeatureUsageSeries(events: AdminEvent[], days: number): DailyFeatureUsage[] {
@@ -411,6 +413,8 @@ const STUDYFORGE_EVENT_TYPES = new Set<EventType>([
   "studyforge.chat",
 ]);
 
+const PPTFORGE_EVENT_TYPES = new Set<EventType>(["pptforge.generate"]);
+
 export interface AdminOverviewBundle {
   overview: OverviewCounts;
   featureUsageDaily: DailyFeatureUsage[];
@@ -425,6 +429,8 @@ export interface AdminOverviewBundle {
   codeforgeTopStats: ScopedTopStats;
   studyforgeOverview: ScopedOverviewCounts;
   studyforgeTopStats: ScopedTopStats;
+  pptforgeOverview: ScopedOverviewCounts;
+  pptforgeTopStats: ScopedTopStats;
 }
 
 export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
@@ -455,6 +461,12 @@ export async function getAdminOverviewBundle(): Promise<AdminOverviewBundle> {
     studyforgeTopStats: buildScopedTopStats(
       events,
       STUDYFORGE_EVENT_TYPES,
+      (type) => FEATURE_EVENT_LABELS[type] ?? type
+    ),
+    pptforgeOverview: buildScopedOverview(events, PPTFORGE_EVENT_TYPES),
+    pptforgeTopStats: buildScopedTopStats(
+      events,
+      PPTFORGE_EVENT_TYPES,
       (type) => FEATURE_EVENT_LABELS[type] ?? type
     ),
   };

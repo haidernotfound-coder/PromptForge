@@ -88,8 +88,19 @@ Rules:
 - Vary layouts — do not use "bullets" for every slide. Use "chart" or "table" when the
   content is naturally numeric/comparative, "two_column" or "comparison" for contrasts,
   "image" when a visual would help, "quote" for a strong statement.
-- Bullets: max 5 per list, each under 12 words. Never write paragraphs into a bullet.
-- "chart".series[].values must have the same length as "categories".
-- "table" needs at least 2 columns and 2 data rows, headers included separately from rows.
+- CONTENT DENSITY IS CRITICAL — thin, sparse slides are a failure. Every content slide
+  (bullets, two_column, comparison, image) needs AT LEAST 4 bullets total (4-5 for
+  "bullets"/"image", at least 3 per side for "two_column"/"comparison" — never fewer than
+  3 in any one list). Each bullet should be a full, specific, informative phrase of
+  roughly 8-14 words (not a 2-3 word fragment, but still not a paragraph) — it should
+  teach the reader something concrete about the topic, not just gesture at a subtopic.
+  Weak example (do not do this): "Market growth". Good example: "Global market grew 18%
+  year-over-year, driven by enterprise adoption."
+- "chart" needs at least 3 categories/data points; "table" needs at least 3 data rows
+  (not just 2) and at least 2 columns, headers included separately from rows.
+- Never leave a slide looking sparse: if you can't fill a layout with substantive content,
+  pick a different layout or fold the point into a nearby slide instead of submitting a
+  thin one.
 - Every slide's content must be directly about the requested topic — do not pad with
-  generic filler slides unrelated to it.`;
+  generic filler slides unrelated to it, and do not pad bullets with vague restatements
+  just to hit the count; make every bullet carry real, distinct information.`;

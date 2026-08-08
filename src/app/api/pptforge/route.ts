@@ -59,7 +59,7 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
     },
     body: JSON.stringify({
       model: "llama-3.3-70b-versatile",
-      max_tokens: 6000,
+      max_tokens: 8000,
       temperature: 0.6,
       response_format: { type: "json_object" },
       messages: [
@@ -203,6 +203,9 @@ export async function POST(request: Request) {
   const settings = await getSystemSettings();
   if (settings.maintenanceMode) {
     return NextResponse.json({ error: "AI features are temporarily in maintenance mode" }, { status: 503 });
+  }
+  if (!settings.pptforgeEnabled) {
+    return NextResponse.json({ error: "PPTForge is temporarily disabled" }, { status: 503 });
   }
 
   let body: RequestBody;

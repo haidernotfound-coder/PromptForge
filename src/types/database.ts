@@ -297,6 +297,7 @@ export interface Database {
           maintenance_mode: boolean;
           codeforge_enabled: boolean;
           studyforge_enabled: boolean;
+          pptforge_enabled: boolean;
           updated_at: string;
         };
         Insert: {
@@ -307,6 +308,7 @@ export interface Database {
           maintenance_mode?: boolean;
           codeforge_enabled?: boolean;
           studyforge_enabled?: boolean;
+          pptforge_enabled?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -317,6 +319,7 @@ export interface Database {
           maintenance_mode?: boolean;
           codeforge_enabled?: boolean;
           studyforge_enabled?: boolean;
+          pptforge_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [];
