@@ -71,7 +71,8 @@ export function ProductGrid() {
           One account. A growing suite of AI-powered tools.
         </h2>
         <p className="mt-4 text-text-muted leading-relaxed">
-          Sign in once and unlock every tool as it ships — PromptForge, CodeForge, and StudyForge are available now.
+          Sign in once and unlock every tool as it ships — PromptForge, CodeForge, StudyForge, and PPTForge are
+          available now.
         </p>
       </motion.div>
 

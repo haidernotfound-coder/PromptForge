@@ -8,7 +8,7 @@ import { getAppSessionOrNull } from "@/lib/session";
 
 export const metadata: Metadata = {
   description:
-    "NexPrompt is a platform of AI-powered tools. PromptForge (prompt writing and organization), CodeForge (generate, fix, and optimize code), and StudyForge (flashcards, quizzes, and study tools) are all available now, with more tools on the way.",
+    "NexPrompt is a platform of AI-powered tools. PromptForge (prompt writing and organization), CodeForge (generate, fix, and optimize code), StudyForge (flashcards, quizzes, and study tools), and PPTForge (topic-to-slide-deck generation) are all available now, with more tools on the way.",
   alternates: { canonical: "/" },
 };
 
@@ -26,7 +26,7 @@ export default async function HomePage() {
           </h2>
           <p className="mt-3 text-text-muted max-w-lg mx-auto leading-relaxed">
             Sign in once to NexPrompt and you&apos;re signed in across every tool in the
-            platform — PromptForge, CodeForge, and StudyForge included.
+            platform — PromptForge, CodeForge, StudyForge, and PPTForge included.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row flex-wrap gap-3 justify-center">
             {session ? (
@@ -44,6 +44,11 @@ export default async function HomePage() {
                 <Button size="lg" variant="outline" asChild>
                   <Link href="/products/studyforge">
                     Open StudyForge <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/products/pptforge">
+                    Open PPTForge <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </>
