@@ -122,6 +122,31 @@ export function isStudyForgeConfigured(): boolean {
 }
 
 /**
+ * PPTForge — the fourth NexPrompt product — gets its own Groq key pool:
+ * `PPTFORGE_GROQ_API_KEY_1`..`_5` (and unsuffixed `PPTFORGE_GROQ_API_KEY` as
+ * key 1). Five slots, same shape as CodeForge/Forge AI. If no PPTForge-
+ * specific key is set, it falls back to the shared `GROQ_API_KEY_*` pool
+ * (PromptForge's pool) so PPTForge still "just works" in a zero-extra-setup
+ * install that already has `GROQ_API_KEY` configured — it only falls back,
+ * never the other way around, so setting PPTFORGE_GROQ_API_KEY_* keeps
+ * PPTForge's usage fully independent when you want it to be.
+ */
+export function getPptForgeApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.PPTFORGE_GROQ_API_KEY_1 || process.env.PPTFORGE_GROQ_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 5; i++) {
+    const key = process.env[`PPTFORGE_GROQ_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys.length > 0 ? keys : getGroqApiKeys();
+}
+
+export function isPptForgeConfigured(): boolean {
+  return getPptForgeApiKeys().length > 0;
+}
+
+/**
  * Env var name for each configured key, in order — e.g.
  * `["GROQ_API_KEY_1", "GROQ_API_KEY_2"]` (or `["GROQ_API_KEY"]` for a
  * single unsuffixed key). Used as a stable, non-secret label for the admin
@@ -169,4 +194,17 @@ export function getStudyForgeKeyLabels(): string[] {
     if (process.env[`STUDYFORGE_GROQ_API_KEY_${i}`]) labels.push(`STUDYFORGE_GROQ_API_KEY_${i}`);
   }
   return labels;
+}
+
+/** Same purpose as `getGroqKeyLabels`/`getForgeAiKeyLabels`, for the
+ *  5-slot PPTForge pool. Falls back to `getGroqKeyLabels()` when no
+ *  PPTForge-specific key is set, mirroring `getPptForgeApiKeys()`. */
+export function getPptForgeKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.PPTFORGE_GROQ_API_KEY_1) labels.push("PPTFORGE_GROQ_API_KEY_1");
+  else if (process.env.PPTFORGE_GROQ_API_KEY) labels.push("PPTFORGE_GROQ_API_KEY");
+  for (let i = 2; i <= 5; i++) {
+    if (process.env[`PPTFORGE_GROQ_API_KEY_${i}`]) labels.push(`PPTFORGE_GROQ_API_KEY_${i}`);
+  }
+  return labels.length > 0 ? labels : getGroqKeyLabels();
 }

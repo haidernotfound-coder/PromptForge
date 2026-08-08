@@ -7,10 +7,12 @@ import {
   getCodeForgeKeyLabels,
   getStudyForgeApiKeys,
   getStudyForgeKeyLabels,
+  getPptForgeKeyLabels,
   isAiConfigured,
   isForgeAiConfigured,
   isCodeForgeConfigured,
   isStudyForgeConfigured,
+  isPptForgeConfigured,
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -45,7 +47,7 @@ export interface GroqKeyStatus {
 }
 
 export interface GroqPoolStatus {
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge";
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge";
   name: string;
   configured: boolean;
   keys: GroqKeyStatus[];
@@ -69,7 +71,7 @@ function maskKeyLabel(label: string): string {
 }
 
 async function buildPool(
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge",
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge",
   name: string,
   configured: boolean,
   labels: string[]
@@ -105,14 +107,15 @@ async function buildPool(
 }
 
 export async function getGroqMonitorData(): Promise<GroqMonitorData> {
-  const [aiPool, forgeAiPool, codeforgePool, studyforgePool] = await Promise.all([
+  const [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool] = await Promise.all([
     buildPool("ai", "Improve / Rewrite / Expand / Shorten / Critique", isAiConfigured(), getGroqKeyLabels()),
     buildPool("forge_ai", "Forge AI chat", isForgeAiConfigured(), getForgeAiKeyLabels()),
     buildPool("codeforge", "CodeForge tools + chat", isCodeForgeConfigured(), getCodeForgeKeyLabels()),
     buildPool("studyforge", "StudyForge tools + chat", isStudyForgeConfigured(), getStudyForgeKeyLabels()),
+    buildPool("pptforge", "PPTForge generation", isPptForgeConfigured(), getPptForgeKeyLabels()),
   ]);
 
-  const pools = [aiPool, forgeAiPool, codeforgePool, studyforgePool];
+  const pools = [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool];
   return {
     pools,
     combined: {

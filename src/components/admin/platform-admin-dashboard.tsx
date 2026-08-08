@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShieldCheck, Sparkles, GraduationCap, Code2, ImageIcon, Lock, RefreshCw } from "lucide-react";
+import { ShieldCheck, Sparkles, GraduationCap, Code2, Lock, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,7 @@ import { AdminDashboard } from "@/components/admin/admin-dashboard";
 import { CodeForgeAdminPanel } from "@/components/admin/codeforge-admin-panel";
 import { StudyForgeAdminPanel } from "@/components/admin/studyforge-admin-panel";
 
-const COMING_SOON_PRODUCTS = [
-  { slug: "imageforge", name: "ImageForge", icon: ImageIcon },
-];
+const COMING_SOON_PRODUCTS: { slug: string; name: string; icon: typeof Lock }[] = [];
 
 export function PlatformAdminDashboard({
   initialData,

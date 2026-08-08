@@ -47,7 +47,8 @@ export type EventType =
   | "studyforge.planner"
   | "studyforge.summarize"
   | "studyforge.exam"
-  | "studyforge.chat";
+  | "studyforge.chat"
+  | "pptforge.generate";
 
 export interface AdminEvent {
   id: string;
@@ -177,7 +178,7 @@ export async function getRecentEvents(limit = 500): Promise<AdminEvent[]> {
 // --- Groq key usage ------------------------------------------------------
 
 export interface RecordGroqUsageInput {
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge";
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge";
   keyLabel: string;
   success: boolean;
 }
@@ -219,7 +220,7 @@ export async function recordGroqUsage(input: RecordGroqUsageInput): Promise<void
 }
 
 export interface GroqKeyUsageSnapshot {
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge";
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge";
   keyLabel: string;
   requestCount: number;
   successCount: number;
@@ -229,7 +230,7 @@ export interface GroqKeyUsageSnapshot {
 /** Today's usage for every key in `poolKeyLabels` (zero-filled for keys
  *  that haven't been used yet today). */
 export async function getGroqUsageToday(
-  poolKeyLabels: { pool: "ai" | "forge_ai" | "codeforge" | "studyforge"; keyLabel: string }[]
+  poolKeyLabels: { pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge"; keyLabel: string }[]
 ): Promise<GroqKeyUsageSnapshot[]> {
   const usageDate = todayKey();
 

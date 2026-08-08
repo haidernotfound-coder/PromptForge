@@ -15,6 +15,7 @@ const POOL_TITLES: Record<GroqPoolStatus["pool"], string> = {
   forge_ai: "Forge AI chat",
   codeforge: "CodeForge tools + chat",
   studyforge: "StudyForge tools + chat",
+  pptforge: "PPTForge generation",
 };
 
 export function PoolCard({ pool }: { pool: GroqPoolStatus }) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, GraduationCap, Code2, ImageIcon, Sparkles, Lock } from "lucide-react";
+import { ArrowRight, GraduationCap, Code2, Presentation, Sparkles, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Product {
@@ -44,13 +44,13 @@ const PRODUCTS: Product[] = [
     color: "bg-blue-500 text-white",
   },
   {
-    slug: "imageforge",
-    name: "ImageForge",
-    tagline: "Prompt, generate, and organize AI image assets in one workspace.",
-    icon: ImageIcon,
-    status: "soon",
-    href: "#",
-    color: "bg-surface text-text-faint",
+    slug: "pptforge",
+    name: "PPTForge",
+    tagline: "Turn a topic into a polished, downloadable slide deck — layouts, charts, and tables included.",
+    icon: Presentation,
+    status: "available",
+    href: "/products/pptforge",
+    color: "bg-orange-500 text-white",
   },
 ];
 
