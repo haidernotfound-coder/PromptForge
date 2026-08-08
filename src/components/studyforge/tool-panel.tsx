@@ -120,7 +120,7 @@ export function StudyForgeToolPanel({ tool }: { tool: StudyForgeTool }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CodeForgeOutputBlock content={output} isCode={false} />
+            <CodeForgeOutputBlock content={output} isCode={false} loading={loading} />
           </CardContent>
         </Card>
       </div>

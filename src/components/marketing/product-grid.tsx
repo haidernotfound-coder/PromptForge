@@ -12,6 +12,7 @@ interface Product {
   icon: React.ComponentType<{ className?: string }>;
   status: "available" | "soon";
   href: string;
+  color: string;
 }
 
 const PRODUCTS: Product[] = [
@@ -22,6 +23,7 @@ const PRODUCTS: Product[] = [
     icon: Sparkles,
     status: "available",
     href: "/products/promptforge",
+    color: "bg-accent text-accent-foreground",
   },
   {
     slug: "studyforge",
@@ -30,6 +32,7 @@ const PRODUCTS: Product[] = [
     icon: GraduationCap,
     status: "available",
     href: "/products/studyforge",
+    color: "bg-emerald-500 text-white",
   },
   {
     slug: "codeforge",
@@ -38,6 +41,7 @@ const PRODUCTS: Product[] = [
     icon: Code2,
     status: "available",
     href: "/products/codeforge",
+    color: "bg-blue-500 text-white",
   },
   {
     slug: "imageforge",
@@ -46,6 +50,7 @@ const PRODUCTS: Product[] = [
     icon: ImageIcon,
     status: "soon",
     href: "#",
+    color: "bg-surface text-text-faint",
   },
 ];
 
@@ -80,8 +85,8 @@ export function ProductGrid() {
               <div className="flex items-start justify-between">
                 <span
                   className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-md",
-                    available ? "bg-accent text-accent-foreground" : "bg-surface text-text-faint"
+                    "flex h-10 w-10 items-center justify-center rounded-md transition-transform group-hover:scale-105",
+                    available ? product.color : "bg-surface text-text-faint"
                   )}
                 >
                   <Icon className="h-5 w-5" />
@@ -121,9 +126,9 @@ export function ProductGrid() {
           );
 
           const cardClasses = cn(
-            "group relative flex flex-col rounded-lg border p-5 transition-colors",
+            "group relative flex flex-col rounded-lg border p-5",
             available
-              ? "border-border bg-surface-raised hover:border-accent/50"
+              ? "card-interactive border-border bg-surface-raised hover:border-accent/50"
               : "border-border/60 bg-surface/40 cursor-not-allowed"
           );
 

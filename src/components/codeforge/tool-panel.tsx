@@ -170,7 +170,7 @@ export function CodeForgeToolPanel({ tool }: { tool: CodeForgeTool }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CodeForgeOutputBlock content={output} isCode={meta.outputIsCode} language={language || undefined} />
+            <CodeForgeOutputBlock content={output} isCode={meta.outputIsCode} language={language || undefined} loading={loading} />
           </CardContent>
         </Card>
       </div>

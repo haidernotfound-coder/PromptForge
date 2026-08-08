@@ -3,7 +3,7 @@
 import * as React from "react";
 import { motion, useDragControls } from "framer-motion";
 import { toast } from "sonner";
-import { Bot, X, Send, Copy, RotateCcw, Check, Loader2, Sparkles } from "lucide-react";
+import { Bot, X, Send, Copy, RotateCcw, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/prompts/confirm-dialog";
@@ -208,7 +208,10 @@ export function ForgeAiPanel({
               </div>
             ) : (
               messages.map((m) => (
-                <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                <div
+                  key={m.id}
+                  className={cn("flex animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
+                >
                   <div
                     className={cn(
                       "max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed",
@@ -227,8 +230,12 @@ export function ForgeAiPanel({
               ))
             )}
             {sending && (
-              <div className="flex items-center gap-1.5 text-xs text-text-faint">
-                <Loader2 className="h-3 w-3 animate-spin" /> Forge AI is thinking…
+              <div className="flex animate-fade-in justify-start">
+                <div className="flex items-center gap-1 rounded-lg bg-surface px-3 py-2.5">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
+                </div>
               </div>
             )}
           </div>

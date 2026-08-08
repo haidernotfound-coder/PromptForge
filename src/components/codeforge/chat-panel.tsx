@@ -129,7 +129,13 @@ export function CodeForgeChatPanel() {
           </div>
         ) : (
           messages.map((m) => (
-            <div key={m.id} className={cn("flex gap-2.5", m.role === "user" ? "justify-end" : "justify-start")}>
+            <div
+              key={m.id}
+              className={cn(
+                "flex gap-2.5 animate-fade-in",
+                m.role === "user" ? "justify-end" : "justify-start"
+              )}
+            >
               {m.role === "assistant" && (
                 <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
                   <Bot className="h-4 w-4" />
@@ -168,8 +174,15 @@ export function CodeForgeChatPanel() {
           ))
         )}
         {sending && (
-          <div className="flex items-center gap-1.5 text-xs text-text-faint">
-            <Loader2 className="h-3 w-3 animate-spin" /> CodeForge is thinking…
+          <div className="flex animate-fade-in items-end gap-2.5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <Bot className="h-4 w-4" />
+            </span>
+            <div className="flex items-center gap-1 rounded-lg bg-surface px-3.5 py-3">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
+            </div>
           </div>
         )}
       </div>

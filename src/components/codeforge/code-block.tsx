@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 
 /**
@@ -18,6 +19,7 @@ export function CodeForgeOutputBlock({
   content,
   isCode,
   language,
+  loading = false,
   emptyLabel = "Output will appear here.",
 }: {
   content: string;
@@ -25,6 +27,10 @@ export function CodeForgeOutputBlock({
   /** For isCode results, the language to syntax-highlight as (defaults to
    *  plain-text detection by rehype-highlight if omitted). */
   language?: string;
+  /** Shows shimmer skeleton lines instead of the empty state while a
+   *  request is in flight, so "nothing happened yet" and "working on it"
+   *  don't look identical. */
+  loading?: boolean;
   emptyLabel?: string;
 }) {
   const [copied, setCopied] = React.useState(false);
@@ -52,21 +58,32 @@ export function CodeForgeOutputBlock({
   return (
     <div className="relative rounded-md border border-border bg-surface">
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-        <span className="text-xs font-medium text-text-muted">{isCode ? "Code" : "Result"}</span>
+        <span className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+          {isCode ? "Code" : "Result"}
+          {loading && <span className="text-text-faint">· Generating…</span>}
+        </span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           className="h-7 gap-1.5 px-2 text-xs"
           onClick={copy}
-          disabled={!content.trim()}
+          disabled={loading || !content.trim()}
         >
           {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
-      {content.trim() ? (
-        <div className="max-h-[520px] overflow-auto p-4">
+      {loading ? (
+        <div className="space-y-2.5 p-4">
+          <Skeleton className="h-3.5 w-[92%]" />
+          <Skeleton className="h-3.5 w-[78%]" />
+          <Skeleton className="h-3.5 w-[85%]" />
+          <Skeleton className="h-3.5 w-[60%]" />
+          <Skeleton className="h-3.5 w-[70%]" />
+        </div>
+      ) : content.trim() ? (
+        <div className="max-h-[520px] overflow-auto p-4 animate-fade-in">
           <MarkdownRenderer content={displayContent} />
         </div>
       ) : (
