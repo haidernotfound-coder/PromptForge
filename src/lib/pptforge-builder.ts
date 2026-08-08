@@ -1,6 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import type { PptForgeStyle } from "@/lib/pptforge";
 import type { PptForgeDeckPlan, PptForgeSlidePlan, PptForgeColumn } from "@/lib/pptforge-schema";
+import { applyTransitionsAndAnimations } from "@/lib/pptforge-effects";
 
 /**
  * PPTForge pptx builder
@@ -9,6 +10,15 @@ import type { PptForgeDeckPlan, PptForgeSlidePlan, PptForgeColumn } from "@/lib/
  * PptxGenJS. All design decisions (colors, fonts, spacing, which shapes to
  * draw) live here — the model only ever supplies content, never markup —
  * so output quality doesn't depend on the model "knowing" design.
+ *
+ * Design is intentionally randomized per generation: each `style` maps to
+ * a handful of palette variants and decorative "skins" (accent placement
+ * on title/section/heading slides). One variant + one skin is rolled per
+ * `buildPptx()` call, so re-running the same topic/style twice produces a
+ * visually different deck. Slide transitions and click-to-reveal entrance
+ * animations are then stitched into the raw OOXML afterward, since
+ * PptxGenJS itself has no transition/animation API (see
+ * `pptforge-effects.ts`).
  */
 
 interface Theme {
@@ -25,73 +35,124 @@ interface Theme {
   chartColors: string[];
 }
 
-const THEMES: Record<PptForgeStyle, Theme> = {
-  professional: {
-    bg: "FFFFFF",
-    panel: "F1F5F9",
-    ink: "0F172A",
-    inkMuted: "475569",
-    accent: "1D4ED8",
-    accent2: "0EA5E9",
-    darkBg: "0F172A",
-    darkInk: "F8FAFC",
-    headingFont: "Georgia",
-    bodyFont: "Calibri",
-    chartColors: ["1D4ED8", "0EA5E9", "0F766E", "64748B", "7C3AED"],
-  },
-  modern: {
-    bg: "FFFFFF",
-    panel: "FFF1E6",
-    ink: "1A1A2E",
-    inkMuted: "52527A",
-    accent: "FF5A36",
-    accent2: "FFB020",
-    darkBg: "1A1A2E",
-    darkInk: "FFFFFF",
-    headingFont: "Calibri",
-    bodyFont: "Calibri",
-    chartColors: ["FF5A36", "FFB020", "16C79A", "6C5CE7", "00B4D8"],
-  },
-  minimal: {
-    bg: "FFFFFF",
-    panel: "FAFAFA",
-    ink: "18181B",
-    inkMuted: "71717A",
-    accent: "18181B",
-    accent2: "A1A1AA",
-    darkBg: "18181B",
-    darkInk: "FAFAFA",
-    headingFont: "Calibri Light",
-    bodyFont: "Calibri",
-    chartColors: ["18181B", "52525B", "A1A1AA", "D4D4D8", "71717A"],
-  },
-  bold: {
-    bg: "FFFFFF",
-    panel: "111111",
-    ink: "111111",
-    inkMuted: "3F3F46",
-    accent: "E11D48",
-    accent2: "FACC15",
-    darkBg: "111111",
-    darkInk: "FFFFFF",
-    headingFont: "Impact",
-    bodyFont: "Calibri",
-    chartColors: ["E11D48", "FACC15", "111111", "9333EA", "059669"],
-  },
-  academic: {
-    bg: "FFFDF7",
-    panel: "F0EFE1",
-    ink: "1F2A1E",
-    inkMuted: "4B5945",
-    accent: "1F5E3C",
-    accent2: "B08D57",
-    darkBg: "1F3B2C",
-    darkInk: "FBF7EC",
-    headingFont: "Georgia",
-    bodyFont: "Cambria",
-    chartColors: ["1F5E3C", "B08D57", "6B8F71", "8C6D46", "3D6B4F"],
-  },
+/** Decorative treatment applied to title/section/closing/heading slides.
+ *  Purely a layout skin — same theme colors, different accent shapes. */
+type Skin = "bar" | "stripe" | "frame" | "corner";
+const SKINS: Skin[] = ["bar", "stripe", "frame", "corner"];
+
+// 3 palette variants per style so "Modern" (etc) doesn't render identically
+// every time — same family/personality, different accent pairing & font.
+const THEME_VARIANTS: Record<PptForgeStyle, Theme[]> = {
+  professional: [
+    {
+      bg: "FFFFFF", panel: "F1F5F9", ink: "0F172A", inkMuted: "475569",
+      accent: "1D4ED8", accent2: "0EA5E9", darkBg: "0F172A", darkInk: "F8FAFC",
+      headingFont: "Georgia", bodyFont: "Calibri",
+      chartColors: ["1D4ED8", "0EA5E9", "0F766E", "64748B", "7C3AED"],
+    },
+    {
+      bg: "FFFFFF", panel: "EFF3EE", ink: "132A13", inkMuted: "4B5945",
+      accent: "0B6E4F", accent2: "3A86FF", darkBg: "0D2818", darkInk: "F4F9F4",
+      headingFont: "Cambria", bodyFont: "Calibri",
+      chartColors: ["0B6E4F", "3A86FF", "8338EC", "2D6A4F", "023047"],
+    },
+    {
+      bg: "FFFFFF", panel: "F3F0EA", ink: "24211B", inkMuted: "5C5647",
+      accent: "8A5A2B", accent2: "1F6F78", darkBg: "22201A", darkInk: "FAF7F0",
+      headingFont: "Georgia", bodyFont: "Cambria",
+      chartColors: ["8A5A2B", "1F6F78", "B08968", "355070", "6D597A"],
+    },
+  ],
+  modern: [
+    {
+      bg: "FFFFFF", panel: "FFF1E6", ink: "1A1A2E", inkMuted: "52527A",
+      accent: "FF5A36", accent2: "FFB020", darkBg: "1A1A2E", darkInk: "FFFFFF",
+      headingFont: "Calibri", bodyFont: "Calibri",
+      chartColors: ["FF5A36", "FFB020", "16C79A", "6C5CE7", "00B4D8"],
+    },
+    {
+      bg: "FFFFFF", panel: "EAF4FF", ink: "121629", inkMuted: "444B6E",
+      accent: "5B5FEF", accent2: "00D2C6", darkBg: "121629", darkInk: "F4F6FF",
+      headingFont: "Trebuchet MS", bodyFont: "Calibri",
+      chartColors: ["5B5FEF", "00D2C6", "FF6392", "FFC857", "3A86FF"],
+    },
+    {
+      bg: "FFFFFF", panel: "FFEAF3", ink: "230B21", inkMuted: "5C3A57",
+      accent: "D6336C", accent2: "F76707", darkBg: "230B21", darkInk: "FFF5FA",
+      headingFont: "Century Gothic", bodyFont: "Calibri",
+      chartColors: ["D6336C", "F76707", "FFB020", "6C5CE7", "16C79A"],
+    },
+  ],
+  minimal: [
+    {
+      bg: "FFFFFF", panel: "FAFAFA", ink: "18181B", inkMuted: "71717A",
+      accent: "18181B", accent2: "A1A1AA", darkBg: "18181B", darkInk: "FAFAFA",
+      headingFont: "Calibri Light", bodyFont: "Calibri",
+      chartColors: ["18181B", "52525B", "A1A1AA", "D4D4D8", "71717A"],
+    },
+    {
+      bg: "FFFFFF", panel: "F5F6F4", ink: "1E2622", inkMuted: "5B6B63",
+      accent: "2F6D5A", accent2: "9FB8AE", darkBg: "1E2622", darkInk: "F5F6F4",
+      headingFont: "Cambria", bodyFont: "Calibri",
+      chartColors: ["2F6D5A", "9FB8AE", "56715F", "233229", "7A9187"],
+    },
+    {
+      bg: "FFFFFF", panel: "F6F3F5", ink: "241B24", inkMuted: "6B5C6B",
+      accent: "6E4B6E", accent2: "C6B2C6", darkBg: "241B24", darkInk: "F6F3F5",
+      headingFont: "Calibri Light", bodyFont: "Calibri",
+      chartColors: ["6E4B6E", "C6B2C6", "8E6F8E", "4A344A", "AE94AE"],
+    },
+  ],
+  bold: [
+    {
+      bg: "FFFFFF", panel: "111111", ink: "111111", inkMuted: "3F3F46",
+      accent: "E11D48", accent2: "FACC15", darkBg: "111111", darkInk: "FFFFFF",
+      headingFont: "Impact", bodyFont: "Calibri",
+      chartColors: ["E11D48", "FACC15", "111111", "9333EA", "059669"],
+    },
+    {
+      bg: "FFFFFF", panel: "0B132B", ink: "0B132B", inkMuted: "3A4463",
+      accent: "1C77C3", accent2: "FF9F1C", darkBg: "0B132B", darkInk: "FFFFFF",
+      headingFont: "Arial Black", bodyFont: "Calibri",
+      chartColors: ["1C77C3", "FF9F1C", "39A0ED", "D7263D", "02182B"],
+    },
+    {
+      bg: "FFFFFF", panel: "141B12", ink: "141B12", inkMuted: "3F4A3B",
+      accent: "2D8A3E", accent2: "F2B807", darkBg: "141B12", darkInk: "FFFFFF",
+      headingFont: "Impact", bodyFont: "Calibri",
+      chartColors: ["2D8A3E", "F2B807", "8C1C13", "1B4332", "BC6C25"],
+    },
+  ],
+  academic: [
+    {
+      bg: "FFFDF7", panel: "F0EFE1", ink: "1F2A1E", inkMuted: "4B5945",
+      accent: "1F5E3C", accent2: "B08D57", darkBg: "1F3B2C", darkInk: "FBF7EC",
+      headingFont: "Georgia", bodyFont: "Cambria",
+      chartColors: ["1F5E3C", "B08D57", "6B8F71", "8C6D46", "3D6B4F"],
+    },
+    {
+      bg: "FBF9F6", panel: "EFE6DD", ink: "2B211A", inkMuted: "5C4E42",
+      accent: "7A3B2E", accent2: "3E6E8E", darkBg: "2B211A", darkInk: "FBF3E9",
+      headingFont: "Georgia", bodyFont: "Cambria",
+      chartColors: ["7A3B2E", "3E6E8E", "B08D57", "556B2F", "8B5E3C"],
+    },
+    {
+      bg: "FCFAF6", panel: "E9EBE4", ink: "1D2733", inkMuted: "48566A",
+      accent: "2C4A6E", accent2: "9C7A3C", darkBg: "1D2733", darkInk: "F7F8F4",
+      headingFont: "Cambria", bodyFont: "Georgia",
+      chartColors: ["2C4A6E", "9C7A3C", "4C7C8C", "6B7F5E", "8A6642"],
+    },
+  ],
 };
+
+function pickTheme(style: PptForgeStyle): Theme {
+  const variants = THEME_VARIANTS[style] ?? THEME_VARIANTS.professional;
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
+function pickSkin(): Skin {
+  return SKINS[Math.floor(Math.random() * SKINS.length)];
+}
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -128,10 +189,33 @@ function footer(slide: PptxGenJS.Slide, theme: Theme, pageNum: number, total: nu
   });
 }
 
-function titleSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan, deckTitle: string) {
+function titleDecoration(slide: PptxGenJS.Slide, theme: Theme, skin: Skin) {
+  switch (skin) {
+    case "stripe":
+      slide.addShape("rect", { x: 0, y: 0, w: 0.22, h: SLIDE_H, fill: { color: theme.accent } });
+      slide.addShape("rect", { x: 0.22, y: 0, w: 0.06, h: SLIDE_H, fill: { color: theme.accent2 } });
+      break;
+    case "frame":
+      slide.addShape("rect", { x: 0, y: 0, w: SLIDE_W, h: 0.12, fill: { color: theme.accent } });
+      slide.addShape("rect", { x: 0, y: SLIDE_H - 0.12, w: SLIDE_W, h: 0.12, fill: { color: theme.accent } });
+      slide.addShape("rect", { x: 0, y: 0, w: 0.12, h: SLIDE_H, fill: { color: theme.accent2 } });
+      slide.addShape("rect", { x: SLIDE_W - 0.12, y: 0, w: 0.12, h: SLIDE_H, fill: { color: theme.accent2 } });
+      break;
+    case "corner":
+      slide.addShape("ellipse", { x: SLIDE_W - 3.2, y: -2.2, w: 4.4, h: 4.4, fill: { color: theme.accent, transparency: 25 } });
+      slide.addShape("ellipse", { x: SLIDE_W - 1.6, y: SLIDE_H - 1.6, w: 2.4, h: 2.4, fill: { color: theme.accent2, transparency: 15 } });
+      break;
+    case "bar":
+    default:
+      slide.addShape("rect", { x: 0, y: SLIDE_H - 0.18, w: SLIDE_W, h: 0.18, fill: { color: theme.accent } });
+      break;
+  }
+}
+
+function titleSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan, deckTitle: string) {
   const slide = pptx.addSlide();
   slide.background = { color: theme.darkBg };
-  slide.addShape("rect", { x: 0, y: SLIDE_H - 0.18, w: SLIDE_W, h: 0.18, fill: { color: theme.accent } });
+  titleDecoration(slide, theme, skin);
   slide.addText(plan.title || deckTitle, {
     x: MARGIN,
     y: SLIDE_H / 2 - 1.1,
@@ -158,10 +242,10 @@ function titleSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan, deck
   }
 }
 
-function closingSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan) {
+function closingSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan) {
   const slide = pptx.addSlide();
   slide.background = { color: theme.darkBg };
-  slide.addShape("rect", { x: 0, y: 0, w: SLIDE_W, h: 0.18, fill: { color: theme.accent } });
+  titleDecoration(slide, theme, skin);
   slide.addText(plan.title || "Thank you", {
     x: MARGIN,
     y: SLIDE_H / 2 - 0.9,
@@ -188,10 +272,20 @@ function closingSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan) {
   }
 }
 
-function sectionSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function sectionSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.accent };
-  slide.addShape("rect", { x: 0, y: 0, w: 0.18, h: SLIDE_H, fill: { color: theme.darkBg } });
+  if (skin === "frame") {
+    slide.addShape("rect", { x: 0, y: 0, w: SLIDE_W, h: 0.14, fill: { color: theme.darkBg } });
+    slide.addShape("rect", { x: 0, y: SLIDE_H - 0.14, w: SLIDE_W, h: 0.14, fill: { color: theme.darkBg } });
+  } else if (skin === "corner") {
+    slide.addShape("ellipse", { x: -1.6, y: SLIDE_H - 2.2, w: 3.6, h: 3.6, fill: { color: theme.darkBg, transparency: 30 } });
+    slide.addShape("rect", { x: 0, y: 0, w: 0.18, h: SLIDE_H, fill: { color: theme.darkBg } });
+  } else if (skin === "bar") {
+    slide.addShape("rect", { x: 0, y: SLIDE_H - 0.18, w: SLIDE_W, h: 0.18, fill: { color: theme.darkBg } });
+  } else {
+    slide.addShape("rect", { x: 0, y: 0, w: 0.18, h: SLIDE_H, fill: { color: theme.darkBg } });
+  }
   slide.addText(plan.title || "", {
     x: MARGIN + 0.4,
     y: SLIDE_H / 2 - 0.8,
@@ -218,7 +312,7 @@ function sectionSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): P
   return slide;
 }
 
-function slideHeading(slide: PptxGenJS.Slide, theme: Theme, title: string) {
+function slideHeading(slide: PptxGenJS.Slide, theme: Theme, title: string, skin: Skin = "bar") {
   slide.addText(title, {
     x: MARGIN,
     y: 0.45,
@@ -230,7 +324,18 @@ function slideHeading(slide: PptxGenJS.Slide, theme: Theme, title: string) {
     fontFace: theme.headingFont,
     align: "left",
   });
-  slide.addShape("rect", { x: MARGIN, y: 1.25, w: 1.1, h: 0.05, fill: { color: theme.accent } });
+  if (skin === "stripe") {
+    slide.addShape("rect", { x: MARGIN, y: 1.25, w: 0.35, h: 0.05, fill: { color: theme.accent } });
+    slide.addShape("rect", { x: MARGIN + 0.42, y: 1.25, w: 0.35, h: 0.05, fill: { color: theme.accent2 } });
+  } else if (skin === "corner") {
+    slide.addShape("ellipse", { x: SLIDE_W - 0.55, y: 0.4, w: 0.28, h: 0.28, fill: { color: theme.accent } });
+    slide.addShape("rect", { x: MARGIN, y: 1.25, w: 1.1, h: 0.05, fill: { color: theme.accent } });
+  } else if (skin === "frame") {
+    slide.addShape("rect", { x: 0, y: 0, w: SLIDE_W, h: 0.08, fill: { color: theme.accent } });
+    slide.addShape("rect", { x: MARGIN, y: 1.25, w: 1.1, h: 0.05, fill: { color: theme.accent2 } });
+  } else {
+    slide.addShape("rect", { x: MARGIN, y: 1.25, w: 1.1, h: 0.05, fill: { color: theme.accent } });
+  }
 }
 
 /** Renders a bullet list so it actually fills its box rather than pinning a
@@ -272,10 +377,10 @@ function bulletList(
   );
 }
 
-function bulletsSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function bulletsSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
   bulletList(slide, theme, capBullets(plan.bullets), {
     x: MARGIN,
     y: 1.7,
@@ -307,10 +412,10 @@ function columnBlock(
   bulletList(slide, theme, capBullets(col.bullets, 4), { x: x + 0.3, y: 2.45, w: w - 0.6, h: SLIDE_H - 3.1 }, 4);
 }
 
-function twoColumnSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function twoColumnSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
   const gap = 0.4;
   const colW = (SLIDE_W - MARGIN * 2 - gap) / 2;
   columnBlock(slide, theme, plan.left, MARGIN, colW);
@@ -318,10 +423,10 @@ function twoColumnSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan):
   return slide;
 }
 
-function comparisonSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function comparisonSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
   const gap = 0.5;
   const colW = (SLIDE_W - MARGIN * 2 - gap) / 2;
 
@@ -380,10 +485,10 @@ function comparisonSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan)
   return slide;
 }
 
-function imageSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function imageSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
 
   const imgW = 4.6;
   const imgX = SLIDE_W - MARGIN - imgW;
@@ -438,10 +543,10 @@ function imageSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
   return slide;
 }
 
-function chartSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function chartSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
 
   const categories = Array.isArray(plan.categories) && plan.categories.length > 0 ? plan.categories : ["A", "B", "C"];
   const seriesIn =
@@ -482,10 +587,10 @@ function chartSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
   return slide;
 }
 
-function tableSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): PptxGenJS.Slide {
+function tableSlide(pptx: PptxGenJS, theme: Theme, skin: Skin, plan: PptForgeSlidePlan): PptxGenJS.Slide {
   const slide = pptx.addSlide();
   slide.background = { color: theme.bg };
-  slideHeading(slide, theme, plan.title || "");
+  slideHeading(slide, theme, plan.title || "", skin);
 
   const headers = Array.isArray(plan.headers) && plan.headers.length > 0 ? plan.headers : ["Column A", "Column B"];
   const rows = (Array.isArray(plan.rows) ? plan.rows : []).slice(0, 8);
@@ -576,7 +681,8 @@ function quoteSlide(pptx: PptxGenJS, theme: Theme, plan: PptForgeSlidePlan): Ppt
 /** Renders a validated slide plan to a .pptx file buffer, ready to send
  *  straight back as the HTTP response body. */
 export async function buildPptx(plan: PptForgeDeckPlan, style: PptForgeStyle): Promise<Buffer> {
-  const theme = THEMES[style] ?? THEMES.professional;
+  const theme = pickTheme(style);
+  const skin = pickSkin();
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "PPTFORGE_16x9", width: SLIDE_W, height: SLIDE_H });
   pptx.layout = "PPTFORGE_16x9";
@@ -588,41 +694,44 @@ export async function buildPptx(plan: PptForgeDeckPlan, style: PptForgeStyle): P
     let slide: PptxGenJS.Slide;
     switch (slidePlan.layout) {
       case "title":
-        titleSlide(pptx, theme, slidePlan, plan.title);
+        titleSlide(pptx, theme, skin, slidePlan, plan.title);
         return; // no footer on the title slide
       case "closing":
-        closingSlide(pptx, theme, slidePlan);
+        closingSlide(pptx, theme, skin, slidePlan);
         return; // no footer on the closing slide
       case "section":
-        slide = sectionSlide(pptx, theme, slidePlan);
+        slide = sectionSlide(pptx, theme, skin, slidePlan);
         break;
       case "two_column":
-        slide = twoColumnSlide(pptx, theme, slidePlan);
+        slide = twoColumnSlide(pptx, theme, skin, slidePlan);
         break;
       case "comparison":
-        slide = comparisonSlide(pptx, theme, slidePlan);
+        slide = comparisonSlide(pptx, theme, skin, slidePlan);
         break;
       case "image":
-        slide = imageSlide(pptx, theme, slidePlan);
+        slide = imageSlide(pptx, theme, skin, slidePlan);
         break;
       case "chart":
-        slide = chartSlide(pptx, theme, slidePlan);
+        slide = chartSlide(pptx, theme, skin, slidePlan);
         break;
       case "table":
-        slide = tableSlide(pptx, theme, slidePlan);
+        slide = tableSlide(pptx, theme, skin, slidePlan);
         break;
       case "quote":
         slide = quoteSlide(pptx, theme, slidePlan);
         break;
       case "bullets":
       default:
-        slide = bulletsSlide(pptx, theme, slidePlan);
+        slide = bulletsSlide(pptx, theme, skin, slidePlan);
         break;
     }
     if (slidePlan.notes) slide.addNotes(slidePlan.notes);
     footer(slide, theme, i + 1, total, plan.title);
   });
 
-  const buf = await pptx.write({ outputType: "nodebuffer" });
-  return buf as Buffer;
+  const rawBuf = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+  // Post-process the raw OOXML to add per-slide transitions and
+  // click-to-reveal entrance animations — PptxGenJS has no API for either,
+  // see pptforge-effects.ts for why this happens at the zip/XML level.
+  return applyTransitionsAndAnimations(rawBuf);
 }
