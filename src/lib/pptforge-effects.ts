@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import type { PptForgeStyle } from "@/lib/pptforge";
 
 /**
  * PPTForge effects — transitions & entrance animations
@@ -9,8 +10,10 @@ import JSZip from "jszip";
  * module opens the .pptx PptxGenJS already produced (a zip of XML parts),
  * and for every slide:
  *
- *  - inserts a `<p:transition>` picked from a pool of standard PowerPoint
- *    transitions, so moving between slides isn't a hard cut
+ *  - inserts a `<p:transition>` — the SAME one for every slide in a given
+ *    deck, chosen from a small style-appropriate pool, so moving between
+ *    slides feels like one consistent, subtle deliberate choice instead of
+ *    a different flashy effect every slide
  *  - builds a `<p:timing>` tree that fades each shape in one at a time —
  *    the first click reveals the slide, each following shape follows
  *    automatically ("after previous"), so a slide with a title and five
@@ -20,32 +23,40 @@ import JSZip from "jszip";
  * slide; it never rewrites content PptxGenJS already produced.
  */
 
-// Safe, schema-valid ECMA-376 slide transitions (§19.3.2 CT_SlideTransition
-// child elements). Kept to ones that render consistently in PowerPoint,
-// Keynote, and Google Slides.
-const TRANSITIONS: string[] = [
-  '<p:transition spd="med"><p:fade/></p:transition>',
-  '<p:transition spd="med"><p:wipe dir="l"/></p:transition>',
-  '<p:transition spd="med"><p:wipe dir="r"/></p:transition>',
-  '<p:transition spd="med"><p:push dir="l"/></p:transition>',
-  '<p:transition spd="med"><p:push dir="u"/></p:transition>',
-  '<p:transition spd="med"><p:cover dir="l"/></p:transition>',
-  '<p:transition spd="med"><p:pull dir="r"/></p:transition>',
-  '<p:transition spd="med"><p:wheel spokes="4"/></p:transition>',
-  '<p:transition spd="fast"><p:cut/></p:transition>',
-  '<p:transition spd="med"><p:split orient="horz" dir="out"/></p:transition>',
-  '<p:transition spd="med"><p:strips dir="ld"/></p:transition>',
-  '<p:transition spd="med"><p:zoom dir="in"/></p:transition>',
-  '<p:transition spd="med"><p:blinds dir="horz"/></p:transition>',
-  '<p:transition spd="med"><p:checker dir="horz"/></p:transition>',
-  '<p:transition spd="med"><p:circle/></p:transition>',
-  '<p:transition spd="med"><p:diamond/></p:transition>',
-  '<p:transition spd="med"><p:dissolve/></p:transition>',
-  '<p:transition spd="med"><p:plus/></p:transition>',
-];
+// Curated, deliberately restrained per-style transition pools — no
+// checkerboards/wheels/blinds here, just the handful of ECMA-376
+// transitions (§19.3.2 CT_SlideTransition) that read as "subtle" and are
+// consistently supported in PowerPoint, Keynote, and Google Slides.
+const STYLE_TRANSITIONS: Record<PptForgeStyle, string[]> = {
+  professional: [
+    '<p:transition spd="med"><p:fade/></p:transition>',
+    '<p:transition spd="med"><p:push dir="l"/></p:transition>',
+    '<p:transition spd="med"><p:cover dir="l"/></p:transition>',
+  ],
+  modern: [
+    '<p:transition spd="med"><p:fade/></p:transition>',
+    '<p:transition spd="med"><p:wipe dir="l"/></p:transition>',
+    '<p:transition spd="med"><p:zoom dir="in"/></p:transition>',
+  ],
+  minimal: [
+    '<p:transition spd="med"><p:fade/></p:transition>',
+    '<p:transition spd="slow"><p:dissolve/></p:transition>',
+  ],
+  bold: [
+    '<p:transition spd="fast"><p:cut/></p:transition>',
+    '<p:transition spd="med"><p:push dir="l"/></p:transition>',
+    '<p:transition spd="med"><p:wipe dir="l"/></p:transition>',
+  ],
+  academic: [
+    '<p:transition spd="med"><p:fade/></p:transition>',
+    '<p:transition spd="med"><p:wipe dir="r"/></p:transition>',
+    '<p:transition spd="med"><p:cover dir="u"/></p:transition>',
+  ],
+};
 
-function pickTransition(): string {
-  return TRANSITIONS[Math.floor(Math.random() * TRANSITIONS.length)];
+function pickDeckTransition(style: PptForgeStyle): string {
+  const pool = STYLE_TRANSITIONS[style] ?? STYLE_TRANSITIONS.professional;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 /** Pulls the ids of top-level content shapes (text boxes, autoshapes,
@@ -91,13 +102,12 @@ function buildTiming(shapeIds: string[]): string {
   return `<p:timing><p:tnLst><p:par><p:cTn id="${rootId}" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="${seqId}" dur="indefinite" nodeType="mainSeq"><p:childTnLst>${pars}</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
 }
 
-function injectIntoSlide(slideXml: string): string {
+function injectIntoSlide(slideXml: string, transition: string): string {
   let xml = slideXml;
 
   // <p:transition> is a sibling of <p:cSld>/<p:clrMapOvr>, must come right
   // before </p:sld> (or before <p:timing> if present). Insert after
   // clrMapOvr when present, otherwise right after cSld closes.
-  const transition = pickTransition();
   if (xml.includes("</p:clrMapOvr>")) {
     xml = xml.replace("</p:clrMapOvr>", `</p:clrMapOvr>${transition}`);
   } else if (xml.includes("</p:cSld>")) {
@@ -120,7 +130,7 @@ function injectIntoSlide(slideXml: string): string {
  *  woven into the underlying OOXML. Falls back to the original buffer if
  *  anything about the zip looks unexpected, so a bug here can never turn a
  *  working download into a broken one. */
-export async function applyTransitionsAndAnimations(buf: Buffer): Promise<Buffer> {
+export async function applyTransitionsAndAnimations(buf: Buffer, style: PptForgeStyle): Promise<Buffer> {
   try {
     const zip = await JSZip.loadAsync(buf);
     const slideFiles = Object.keys(zip.files)
@@ -133,10 +143,11 @@ export async function applyTransitionsAndAnimations(buf: Buffer): Promise<Buffer
 
     if (slideFiles.length === 0) return buf;
 
+    const transition = pickDeckTransition(style);
     for (const name of slideFiles) {
       const original = await zip.file(name)?.async("string");
       if (!original) continue;
-      const updated = injectIntoSlide(original);
+      const updated = injectIntoSlide(original, transition);
       zip.file(name, updated);
     }
 
