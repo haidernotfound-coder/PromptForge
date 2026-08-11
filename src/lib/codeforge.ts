@@ -378,12 +378,17 @@ export async function sendCodeForgeChatMessage(
         documents,
       }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.output === "string" && data.output.trim()) return data.output.trim();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && typeof data.output === "string" && data.output.trim()) {
+      return data.output.trim();
     }
-  } catch {
-    // fall through to local reply
+    // Do not silently turn an attachment/provider failure into a fake demo
+    // response. The UI needs the real server error so the user knows the
+    // attachment was not analyzed.
+    throw new Error(typeof data.error === "string" ? data.error : `AI request failed (${res.status})`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "AI request failed";
+    throw new Error(message);
   }
   return localChatReply(history);
 }

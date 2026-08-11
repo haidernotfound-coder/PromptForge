@@ -153,6 +153,47 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
+// Groq currently limits base64-encoded image inputs to 4 MB. Keep the
+// upload limit at 100 MB, but transparently resize/compress large images
+// before they are sent through the chat API so normal phone/screenshot
+// uploads can actually reach the vision model.
+const MAX_GROQ_IMAGE_BYTES = 3.5 * 1024 * 1024;
+const MAX_GROQ_IMAGE_DIMENSION = 2048;
+
+async function readImageForGroq(file: File): Promise<string> {
+  const original = await readAsDataUrl(file);
+  if (file.size <= MAX_GROQ_IMAGE_BYTES) return original;
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, MAX_GROQ_IMAGE_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight));
+        const width = Math.max(1, Math.round(img.naturalWidth * scale));
+        const height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas is unavailable");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.82;
+        let output = canvas.toDataURL("image/webp", quality);
+        while (output.length > MAX_GROQ_IMAGE_BYTES * 1.37 && quality > 0.45) {
+          quality -= 0.08;
+          output = canvas.toDataURL("image/webp", quality);
+        }
+        resolve(output);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Failed to process image"));
+      }
+    };
+    img.onerror = () => reject(new Error("Failed to decode image"));
+    img.src = original;
+  });
+}
+
 /** Reads a single File into a ChatAttachment, handling each kind
  *  appropriately. Never throws — read failures are captured on `.error`
  *  so one bad file doesn't block the rest of the batch. */
@@ -162,7 +203,7 @@ export async function readAttachment(file: File): Promise<ChatAttachment> {
 
   try {
     if (kind === "image") {
-      base.dataUrl = await readAsDataUrl(file);
+      base.dataUrl = await readImageForGroq(file);
     } else if (kind === "text") {
       const full = await readAsText(file);
       base.truncated = full.length > MAX_TEXT_CHARS;
