@@ -98,18 +98,6 @@ function speechErrorMessage(code: string): string {
   }
 }
 
-function permissionErrorMessage(err: unknown): string {
-  if (err instanceof DOMException) {
-    if (err.name === "NotAllowedError" || err.name === "SecurityError") {
-      return "Microphone access was denied — click the lock/camera icon in your address bar, allow the microphone, then try again.";
-    }
-    if (err.name === "NotFoundError") {
-      return "No microphone found — check that one is connected.";
-    }
-  }
-  return "Couldn't access the microphone — check your browser and OS microphone permissions.";
-}
-
 export function useVoiceInput(onTranscript: (text: string) => void) {
   const [state, setState] = React.useState<VoiceState>("idle");
   const [error, setError] = React.useState<string | null>(null);
