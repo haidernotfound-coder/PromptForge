@@ -472,7 +472,8 @@ export async function sendStudyForgeChatMessage(
   attachments: ChatAttachment[] = []
 ): Promise<string> {
   try {
-    const { contextBlocks, images, documents } = buildAttachmentPayload(attachments);
+    const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
+    if (errors.length > 0) throw new Error(errors.join(" "));
     const res = await fetch("/api/studyforge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -76,8 +76,10 @@ export function StudyForgeChatPanel() {
     try {
       const reply = await sendStudyForgeChatMessage(withUser, pendingAttachments);
       persist([...withUser, makeStudyForgeMessage("assistant", reply)]);
-    } catch {
-      toast.error("AI Study Chat couldn't respond — try again.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown AI error";
+      toast.error(`AI Study Chat couldn't respond: ${message}`, { duration: 9000 });
+      console.error("AI Study Chat request failed", error);
     } finally {
       setSending(false);
     }

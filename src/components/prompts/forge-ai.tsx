@@ -98,8 +98,10 @@ export function ForgeAiPanel({
     try {
       const reply = await sendForgeAiMessage(promptBody, withUser, pendingAttachments);
       persist([...withUser, makeMessage("assistant", reply)]);
-    } catch {
-      toast.error("Forge AI couldn't respond — try again.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown AI error";
+      toast.error(`Forge AI couldn't respond: ${message}`, { duration: 9000 });
+      console.error("Forge AI request failed", error);
     } finally {
       setSending(false);
     }

@@ -157,8 +157,13 @@ function readAsDataUrl(file: File): Promise<string> {
 // upload limit at 100 MB, but transparently resize/compress large images
 // before they are sent through the chat API so normal phone/screenshot
 // uploads can actually reach the vision model.
-const MAX_GROQ_IMAGE_BYTES = 3.5 * 1024 * 1024;
+const MAX_GROQ_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_GROQ_IMAGE_DIMENSION = 2048;
+// The chat APIs receive JSON through a serverless function. Keep the raw
+// attachment transport comfortably below the platform request-body limit;
+// this is separate from the user-facing 100 MB/file selection limit.
+const MAX_DOCUMENT_TRANSPORT_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_TRANSPORT_BYTES = 3 * 1024 * 1024;
 
 async function readImageForGroq(file: File): Promise<string> {
   const original = await readAsDataUrl(file);
@@ -209,8 +214,12 @@ export async function readAttachment(file: File): Promise<ChatAttachment> {
       base.truncated = full.length > MAX_TEXT_CHARS;
       base.textContent = base.truncated ? full.slice(0, MAX_TEXT_CHARS) : full;
     } else if (kind === "document") {
-      const dataUrl = await readAsDataUrl(file);
-      base.base64 = dataUrl.split(",")[1] ?? "";
+      if (file.size > MAX_DOCUMENT_TRANSPORT_BYTES) {
+        base.error = `${file.name} is too large to send through the current AI upload path. Files over 3 MB need direct upload processing.`;
+      } else {
+        const dataUrl = await readAsDataUrl(file);
+        base.base64 = dataUrl.split(",")[1] ?? "";
+      }
     }
   } catch {
     base.error = `Couldn't read ${file.name}.`;
@@ -226,13 +235,18 @@ export function buildAttachmentPayload(attachments: ChatAttachment[]): {
   contextBlocks: string[];
   images: string[];
   documents: { name: string; base64: string }[];
+  errors: string[];
 } {
   const contextBlocks: string[] = [];
   const images: string[] = [];
   const documents: { name: string; base64: string }[] = [];
+  const errors: string[] = [];
 
   for (const att of attachments) {
-    if (att.error) continue;
+    if (att.error) {
+      errors.push(att.error);
+      continue;
+    }
     if (att.kind === "image" && att.dataUrl) {
       images.push(att.dataUrl);
     } else if (att.kind === "text" && att.textContent !== undefined) {
@@ -248,5 +262,11 @@ export function buildAttachmentPayload(attachments: ChatAttachment[]): {
     }
   }
 
-  return { contextBlocks, images, documents };
+  const encodedBytes = images.reduce((sum, url) => sum + Math.max(0, Math.floor(((url.split(",")[1] ?? "").length * 3) / 4)), 0)
+    + documents.reduce((sum, doc) => sum + Math.max(0, Math.floor((doc.base64.length * 3) / 4)), 0);
+  if (encodedBytes > MAX_TOTAL_ATTACHMENT_TRANSPORT_BYTES) {
+    errors.push("The selected attachments are too large to send in one AI message. Try fewer or smaller files.");
+  }
+
+  return { contextBlocks, images, documents, errors };
 }

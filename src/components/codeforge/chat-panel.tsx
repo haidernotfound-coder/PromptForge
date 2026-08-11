@@ -77,8 +77,10 @@ export function CodeForgeChatPanel() {
     try {
       const reply = await sendCodeForgeChatMessage(withUser, pendingAttachments);
       persist([...withUser, makeCodeForgeMessage("assistant", reply)]);
-    } catch {
-      toast.error("AI Coding Chat couldn't respond — try again.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown AI error";
+      toast.error(`AI Coding Chat couldn't respond: ${message}`, { duration: 9000 });
+      console.error("AI Coding Chat request failed", error);
     } finally {
       setSending(false);
     }

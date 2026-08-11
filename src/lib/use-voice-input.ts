@@ -81,31 +81,12 @@ function iframeBlocksMicrophone(): boolean {
   }
 }
 
-/** True only when we can positively confirm the TOP-LEVEL page's own
- *  response headers (e.g. a `Permissions-Policy: microphone=()` sent by
- *  the app itself) disable the microphone feature. This is a distinct
- *  failure mode from user denial or an embedding frame's policy: it
- *  blocks `getUserMedia` unconditionally, before the browser ever
- *  consults what the user allowed in the address bar, and getUserMedia
- *  throws the same `NotAllowedError` either way — so it has to be
- *  checked separately or it gets misreported as "access denied". */
-function siteBlocksMicrophone(): boolean {
-  if (typeof window === "undefined") return false;
-  const policy = (document as unknown as { featurePolicy?: { allowsFeature: (f: string) => boolean } })
-    .featurePolicy;
-  if (!policy) return false;
-  try {
-    return !policy.allowsFeature("microphone");
-  } catch {
-    return false;
-  }
-}
-
 function speechErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
+      return "Speech recognition was blocked even though microphone access may be allowed. Try refreshing the page and starting voice input again.";
     case "service-not-allowed":
-      return "Microphone access is blocked for this site — click the lock/camera icon in your address bar, allow the microphone, then try again.";
+      return "The browser's speech recognition service is unavailable or blocked. Try Chrome/Edge and refresh the page.";
     case "no-speech":
       return "Didn't catch any speech — try again.";
     case "audio-capture":
@@ -133,16 +114,10 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
   const [state, setState] = React.useState<VoiceState>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const recognitionRef = React.useRef<MinimalSpeechRecognition | null>(null);
-  const permissionStreamRef = React.useRef<MediaStream | null>(null);
   const onTranscriptRef = React.useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
 
   const supported = React.useMemo(() => getSpeechRecognitionCtor() !== null, []);
-
-  const releasePermissionStream = React.useCallback(() => {
-    permissionStreamRef.current?.getTracks().forEach((t) => t.stop());
-    permissionStreamRef.current = null;
-  }, []);
 
   const stop = React.useCallback(() => {
     recognitionRef.current?.stop();
@@ -165,30 +140,18 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
       setError("The microphone is blocked in this embedded view — open the app in its own tab to use voice input.");
       return;
     }
-    if (siteBlocksMicrophone()) {
-      setState("error");
-      setError("Voice input is misconfigured on this site (microphone disabled by a Permissions-Policy header) — this isn't your browser's permission setting. Please report this.");
-      return;
-    }
     if (recognitionRef.current) {
       recognitionRef.current.abort();
     }
 
     setError(null);
-    setState("requesting");
 
-    // Explicitly request mic access first — this is what actually shows
-    // the browser's "Allow microphone?" prompt the first time, and gives
-    // us a real error (denied / no device / blocked) if it fails, instead
-    // of SpeechRecognition's vague "not-allowed" for every possible cause.
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      permissionStreamRef.current = stream;
-    } catch (err) {
-      setState("error");
-      setError(permissionErrorMessage(err));
-      return;
-    }
+    // Start SpeechRecognition directly from the button gesture. Do not await
+    // getUserMedia() first: Chrome can treat the awaited permission request as
+    // ending the user activation and then reject recognition.start() even when
+    // the site microphone permission is already Allowed. SpeechRecognition
+    // manages its own microphone permission in supported browsers.
+    setState("listening");
 
     const recognition = new Ctor();
     recognition.continuous = false;
@@ -206,24 +169,22 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     recognition.onerror = (event) => {
       setState("error");
       setError(speechErrorMessage(event.error));
-      releasePermissionStream();
     };
     recognition.onend = () => {
       setState((prev) => (prev === "error" ? prev : "idle"));
       recognitionRef.current = null;
-      releasePermissionStream();
+      
     };
 
     recognitionRef.current = recognition;
-    setState("listening");
     try {
       recognition.start();
     } catch {
       setState("error");
       setError("Couldn't start voice input — try again.");
-      releasePermissionStream();
+      
     }
-  }, [releasePermissionStream]);
+  }, []);
 
   const toggle = React.useCallback(() => {
     if (state === "listening" || state === "requesting") {
@@ -236,9 +197,9 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
   React.useEffect(() => {
     return () => {
       recognitionRef.current?.abort();
-      releasePermissionStream();
+      
     };
-  }, [releasePermissionStream]);
+  }, []);
 
   return { state, error, supported, start, stop, toggle };
 }

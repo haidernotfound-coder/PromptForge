@@ -98,16 +98,16 @@ export function makeMessage(
 }
 
 /** Sends the full conversation (plus the current prompt body for context)
- *  to Forge AI's own endpoint and returns the assistant's reply text.
- *  Falls back to a local heuristic reply if the provider isn't configured
- *  or the request fails, so the panel is never a dead end. */
+ *  to Forge AI's own endpoint. Real provider/attachment failures are surfaced
+ *  to the UI instead of being mislabeled as demo-mode replies. */
 export async function sendForgeAiMessage(
   promptBody: string,
   history: ForgeChatMessage[],
   attachments: ChatAttachment[] = []
 ): Promise<string> {
   try {
-    const { contextBlocks, images, documents } = buildAttachmentPayload(attachments);
+    const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
+    if (errors.length > 0) throw new Error(errors.join(" "));
     const res = await fetch("/api/forge-ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -119,40 +119,18 @@ export async function sendForgeAiMessage(
         documents,
       }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.output === "string" && data.output.trim()) return data.output.trim();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && typeof data.output === "string" && data.output.trim()) {
+      return data.output.trim();
     }
-  } catch {
-    // fall through to local reply
+
+    const serverMessage = typeof data.error === "string" && data.error.trim()
+      ? data.error.trim()
+      : `Forge AI request failed (${res.status})`;
+    throw new Error(serverMessage);
+  } catch (err) {
+    throw err instanceof Error ? err : new Error("Forge AI request failed");
   }
-  return localForgeReply(promptBody, history);
-}
-
-/** Zero-setup fallback so the panel is usable before Forge AI's keys are
- *  configured — deliberately simple/heuristic rather than trying to fake
- *  a real conversational model. */
-function localForgeReply(promptBody: string, history: ForgeChatMessage[]): string {
-  const lastUser = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
-  const words = promptBody.trim() ? promptBody.trim().split(/\s+/).length : 0;
-  const variableCount = new Set(promptBody.match(/\{\{\s*[\w.-]+\s*\}\}/g) ?? []).size;
-
-  if (!promptBody.trim()) {
-    return "Forge AI is running in demo mode (no FORGE_AI_GROQ_API_KEY configured yet), so this is a canned reply: your prompt body is currently empty — write something in the editor and I can help you refine it, or ask me for a starting structure.";
-  }
-
-  const lower = lastUser.toLowerCase();
-  let focus = "structure and clarity";
-  if (lower.includes("short")) focus = "trimming it down";
-  else if (lower.includes("example")) focus = "adding a concrete example";
-  else if (lower.includes("variable")) focus = "how the {{variables}} are used";
-  else if (lower.includes("tone")) focus = "adjusting the tone";
-
-  return [
-    "Forge AI is running in demo mode (no FORGE_AI_GROQ_API_KEY configured yet), so this is a heuristic reply rather than a real model response.",
-    `Your current prompt is about ${words} words${variableCount ? ` with ${variableCount} variable${variableCount === 1 ? "" : "s"}` : ""}.`,
-    `Once real keys are configured, I'd focus on ${focus} based on what you just asked. For now, try the Critic (score + suggestions) or the Improve action in the AI panel below the editor for a real model pass.`,
-  ].join(" ");
 }
 
 /** Pulls a proposed revised prompt out of an assistant reply, if present —

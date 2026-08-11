@@ -366,7 +366,8 @@ export async function sendCodeForgeChatMessage(
   attachments: ChatAttachment[] = []
 ): Promise<string> {
   try {
-    const { contextBlocks, images, documents } = buildAttachmentPayload(attachments);
+    const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
+    if (errors.length > 0) throw new Error(errors.join(" "));
     const res = await fetch("/api/codeforge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
