@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/prompts/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { AttachmentButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
+import { VoiceInputButton } from "@/components/shared/voice-input-button";
 import {
   type CodeForgeChatMessage,
   loadCodeForgeChat,
@@ -32,6 +34,7 @@ export function CodeForgeChatPanel() {
   const [sending, setSending] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
+  const attachmentState = useAttachments();
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -64,13 +67,15 @@ export function CodeForgeChatPanel() {
 
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    const withUser = [...messages, makeCodeForgeMessage("user", trimmed)];
+    if ((!trimmed && attachmentState.attachments.length === 0) || sending) return;
+    const withUser = [...messages, makeCodeForgeMessage("user", trimmed, attachmentState.attachments)];
     persist(withUser);
+    const pendingAttachments = attachmentState.attachments;
     setInput("");
+    attachmentState.clearAttachments();
     setSending(true);
     try {
-      const reply = await sendCodeForgeChatMessage(withUser);
+      const reply = await sendCodeForgeChatMessage(withUser, pendingAttachments);
       persist([...withUser, makeCodeForgeMessage("assistant", reply)]);
     } catch {
       toast.error("AI Coding Chat couldn't respond — try again.");
@@ -152,7 +157,21 @@ export function CodeForgeChatPanel() {
                 {m.role === "assistant" ? (
                   <MarkdownRenderer content={m.content} />
                 ) : (
-                  m.content
+                  <>
+                    {m.content}
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {m.attachments.map((a) => (
+                          <span
+                            key={a.name}
+                            className="rounded-full bg-accent-foreground/10 px-2 py-0.5 text-[10px] text-accent-foreground/80"
+                          >
+                            {a.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
                 {m.role === "assistant" && (
                   <button
@@ -201,24 +220,37 @@ export function CodeForgeChatPanel() {
         ))}
       </div>
 
-      <div className="mt-2 flex items-end gap-2">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send(input);
-            }
-          }}
-          placeholder="Ask about a bug, a design, a language feature…"
-          rows={2}
-          className="resize-none"
+      <div className="mt-2 flex flex-col gap-1">
+        <AttachmentChips
+          attachments={attachmentState.attachments}
+          onRemove={attachmentState.removeAttachment}
+          disabled={sending}
         />
-        <Button onClick={() => void send(input)} disabled={sending || !input.trim()} className="h-10 gap-1.5">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Send
-        </Button>
+        <div className="flex items-end gap-2">
+          <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
+          <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send(input);
+              }
+            }}
+            placeholder="Ask about a bug, a design, a language feature…"
+            rows={2}
+            className="resize-none"
+          />
+          <Button
+            onClick={() => void send(input)}
+            disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
+            className="h-10 gap-1.5"
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Send
+          </Button>
+        </div>
       </div>
 
       <ConfirmDialog

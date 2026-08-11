@@ -15,11 +15,17 @@
  * favorites: this is local chat history, not workspace data).
  */
 
+import { buildAttachmentPayload, type ChatAttachment } from "@/lib/attachments";
+
 export interface ForgeChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /** Lightweight metadata only (name/size/kind) — kept small since this
+   *  persists in localStorage; the actual file contents aren't re-sent
+   *  on reload. */
+  attachments?: { name: string; size: number; kind: string }[];
 }
 
 function id(): string {
@@ -75,22 +81,42 @@ export function clearConversation(promptKey: string): void {
   }
 }
 
-export function makeMessage(role: ForgeChatMessage["role"], content: string): ForgeChatMessage {
-  return { id: id(), role, content, createdAt: new Date().toISOString() };
+export function makeMessage(
+  role: ForgeChatMessage["role"],
+  content: string,
+  attachments?: ChatAttachment[]
+): ForgeChatMessage {
+  return {
+    id: id(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    attachments: attachments?.length
+      ? attachments.map((a) => ({ name: a.name, size: a.size, kind: a.kind }))
+      : undefined,
+  };
 }
 
 /** Sends the full conversation (plus the current prompt body for context)
  *  to Forge AI's own endpoint and returns the assistant's reply text.
  *  Falls back to a local heuristic reply if the provider isn't configured
  *  or the request fails, so the panel is never a dead end. */
-export async function sendForgeAiMessage(promptBody: string, history: ForgeChatMessage[]): Promise<string> {
+export async function sendForgeAiMessage(
+  promptBody: string,
+  history: ForgeChatMessage[],
+  attachments: ChatAttachment[] = []
+): Promise<string> {
   try {
+    const { contextBlocks, images, documents } = buildAttachmentPayload(attachments);
     const res = await fetch("/api/forge-ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         promptBody,
         messages: history.map((m) => ({ role: m.role, content: m.content })),
+        contextBlocks,
+        images,
+        documents,
       }),
     });
     if (res.ok) {

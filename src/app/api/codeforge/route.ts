@@ -3,6 +3,8 @@ import { isCodeForgeConfigured, getCodeForgeApiKeys, getCodeForgeKeyLabels } fro
 import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings, type EventType } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
+import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
+import { extractDocuments } from "@/lib/server/attachment-extract";
 
 /**
  * CodeForge provider wiring — the second NexPrompt product's API surface.
@@ -116,14 +118,26 @@ const CHAT_SYSTEM_PROMPT = [
   "When you're not sure what language or framework the user means, make a reasonable assumption and say so briefly rather than stalling on a clarifying question.",
 ].join(" ");
 
+type GroqMessageContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+
+type GroqMessage = { role: "system" | "user" | "assistant"; content: GroqMessageContent };
+
 type GroqCallResult =
   | { ok: true; output: string }
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
   | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
+const TEXT_MODEL = "llama-3.1-8b-instant";
+// Switched to a vision-capable model when the user has attached images —
+// llama-3.1-8b-instant can't read them, same reasoning as StudyForge/Forge AI.
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+
 async function callGroq(
   apiKey: string,
-  messages: { role: "system" | "user" | "assistant"; content: string }[]
+  messages: GroqMessage[],
+  opts: { vision?: boolean } = {}
 ): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -132,7 +146,7 @@ async function callGroq(
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: opts.vision ? VISION_MODEL : TEXT_MODEL,
       max_tokens: 3000,
       temperature: 0.3,
       messages,
@@ -162,17 +176,17 @@ interface ChatMessage {
 }
 
 type RequestBody =
-  | {
+  | ({
       mode: "tool";
       tool?: CodeForgeTool;
       input?: string;
       language?: string;
       targetLanguage?: string;
-    }
-  | {
+    } & AttachmentRequestBody)
+  | ({
       mode: "chat";
       messages?: ChatMessage[];
-    };
+    } & AttachmentRequestBody);
 
 export async function POST(request: Request) {
   if (!isCodeForgeConfigured()) {
@@ -194,7 +208,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  let messages: { role: "system" | "user" | "assistant"; content: string }[];
+  const attachmentError = validateAttachmentPayload(body);
+  if (attachmentError) {
+    return NextResponse.json({ error: attachmentError }, { status: 413 });
+  }
+  const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
+  const contextText = [
+    ...(body.contextBlocks ?? []),
+    ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
+  ].join("\n\n");
+  const images = body.images ?? [];
+  const useVision = images.length > 0;
+
+  let messages: GroqMessage[];
   let eventType: EventType;
 
   if (body.mode === "tool") {
@@ -231,7 +257,24 @@ export async function POST(request: Request) {
     if (totalLength > 60_000) {
       return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
     }
-    messages = [{ role: "system", content: CHAT_SYSTEM_PROMPT }, ...cleanMessages];
+    messages = [
+      { role: "system", content: CHAT_SYSTEM_PROMPT },
+      ...cleanMessages.map((m, idx) => {
+        const isLastUser = idx === cleanMessages.length - 1 && m.role === "user";
+        if (!isLastUser || (!contextText && images.length === 0)) {
+          return { role: m.role, content: m.content };
+        }
+        const textPart = contextText ? `${m.content}\n\n${contextText}` : m.content;
+        if (images.length === 0) return { role: m.role, content: textPart };
+        return {
+          role: m.role,
+          content: [
+            { type: "text" as const, text: textPart },
+            ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+          ],
+        };
+      }),
+    ];
     eventType = "codeforge.chat";
   } else {
     return NextResponse.json({ error: "Invalid or missing mode" }, { status: 400 });
@@ -250,7 +293,7 @@ export async function POST(request: Request) {
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
-      const result = await callGroq(keys[i], messages);
+      const result = await callGroq(keys[i], messages, { vision: useVision });
       await recordGroqUsage({ pool: "codeforge", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {

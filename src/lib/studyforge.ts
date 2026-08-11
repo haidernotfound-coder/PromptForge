@@ -388,11 +388,14 @@ function firstLine(text: string): string {
 
 // --- AI Study Chat -----------------------------------------------------
 
+import { buildAttachmentPayload, type ChatAttachment } from "@/lib/attachments";
+
 export interface StudyForgeChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  attachments?: { name: string; size: number; kind: string }[];
 }
 
 function id(): string {
@@ -445,21 +448,40 @@ export function clearStudyForgeChat(): void {
   }
 }
 
-export function makeStudyForgeMessage(role: StudyForgeChatMessage["role"], content: string): StudyForgeChatMessage {
-  return { id: id(), role, content, createdAt: new Date().toISOString() };
+export function makeStudyForgeMessage(
+  role: StudyForgeChatMessage["role"],
+  content: string,
+  attachments?: ChatAttachment[]
+): StudyForgeChatMessage {
+  return {
+    id: id(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    attachments: attachments?.length
+      ? attachments.map((a) => ({ name: a.name, size: a.size, kind: a.kind }))
+      : undefined,
+  };
 }
 
 /** Sends the full conversation to StudyForge's own endpoint and returns the
  *  assistant's reply text. Falls back to a local heuristic reply if the
  *  provider isn't configured or the request fails. */
-export async function sendStudyForgeChatMessage(history: StudyForgeChatMessage[]): Promise<string> {
+export async function sendStudyForgeChatMessage(
+  history: StudyForgeChatMessage[],
+  attachments: ChatAttachment[] = []
+): Promise<string> {
   try {
+    const { contextBlocks, images, documents } = buildAttachmentPayload(attachments);
     const res = await fetch("/api/studyforge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mode: "chat",
         messages: history.map((m) => ({ role: m.role, content: m.content })),
+        contextBlocks,
+        images,
+        documents,
       }),
     });
     if (res.ok) {

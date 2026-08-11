@@ -3,6 +3,8 @@ import { isForgeAiConfigured, getForgeAiApiKeys, getForgeAiKeyLabels } from "@/l
 import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
+import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
+import { extractDocuments } from "@/lib/server/attachment-extract";
 
 /**
  * Forge AI provider wiring — the floating chat panel's own endpoint.
@@ -43,12 +45,28 @@ const SYSTEM_PROMPT = [
   "Keep replies focused and concise. This is a working session, not an essay.",
 ].join(" ");
 
+type GroqMessageContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+
+type GroqMessage = { role: "system" | "user" | "assistant"; content: GroqMessageContent };
+
 type GroqCallResult =
   | { ok: true; output: string }
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
   | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
-async function callGroq(apiKey: string, promptBody: string, messages: ForgeAiChatMessage[]): Promise<GroqCallResult> {
+// Text-only model as before; switched to a vision-capable one when the
+// user has attached images, same approach as StudyForge's route.
+const TEXT_MODEL = "llama-3.1-8b-instant";
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+
+async function callGroq(
+  apiKey: string,
+  promptBody: string,
+  messages: GroqMessage[],
+  opts: { vision?: boolean } = {}
+): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -56,7 +74,7 @@ async function callGroq(apiKey: string, promptBody: string, messages: ForgeAiCha
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: opts.vision ? VISION_MODEL : TEXT_MODEL,
       max_tokens: 2000,
       temperature: 0.5,
       messages: [
@@ -96,7 +114,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forge AI is currently disabled" }, { status: 403 });
   }
 
-  let body: { promptBody?: string; messages?: ForgeAiChatMessage[] };
+  let body: { promptBody?: string; messages?: ForgeAiChatMessage[] } & AttachmentRequestBody;
   try {
     body = await request.json();
   } catch {
@@ -122,6 +140,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
   }
 
+  const attachmentError = validateAttachmentPayload(body);
+  if (attachmentError) {
+    return NextResponse.json({ error: attachmentError }, { status: 413 });
+  }
+
+  // Extract any PDF/DOCX attachments to text server-side, then fold every
+  // bit of attachment context (text files + extracted documents) into the
+  // last user turn so the model sees it as part of what was just asked.
+  const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
+  const contextText = [
+    ...(body.contextBlocks ?? []),
+    ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
+  ].join("\n\n");
+
+  const images = body.images ?? [];
+  const useVision = images.length > 0;
+
+  const groqMessages: GroqMessage[] = cleanMessages.map((m, idx) => {
+    const isLastUser = idx === cleanMessages.length - 1 && m.role === "user";
+    if (!isLastUser || (!contextText && images.length === 0)) {
+      return { role: m.role, content: m.content };
+    }
+    const textPart = contextText ? `${m.content}\n\n${contextText}` : m.content;
+    if (images.length === 0) {
+      return { role: m.role, content: textPart };
+    }
+    return {
+      role: m.role,
+      content: [
+        { type: "text", text: textPart },
+        ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+      ],
+    };
+  });
+
   const session = await getAppSessionOrNull();
   const keyLabels = getForgeAiKeyLabels();
 
@@ -133,7 +186,7 @@ export async function POST(request: Request) {
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
-      const result = await callGroq(keys[i], promptBody, cleanMessages);
+      const result = await callGroq(keys[i], promptBody, groqMessages, { vision: useVision });
       await recordGroqUsage({ pool: "forge_ai", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
       if (result.ok) {

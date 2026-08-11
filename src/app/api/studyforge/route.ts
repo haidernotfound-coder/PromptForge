@@ -3,6 +3,8 @@ import { isStudyForgeConfigured, getStudyForgeApiKeys, getStudyForgeKeyLabels } 
 import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings, type EventType } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
+import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
+import { extractDocuments } from "@/lib/server/attachment-extract";
 
 /**
  * StudyForge provider wiring — the third NexPrompt product's API surface.
@@ -251,10 +253,10 @@ type RequestBody =
        *  vision model so the tool result is based on what's in them. */
       images?: string[];
     }
-  | {
+  | ({
       mode: "chat";
       messages?: ChatMessage[];
-    };
+    } & AttachmentRequestBody);
 
 export async function POST(request: Request) {
   if (!isStudyForgeConfigured()) {
@@ -343,7 +345,37 @@ export async function POST(request: Request) {
     if (totalLength > 60_000) {
       return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
     }
-    messages = [{ role: "system", content: CHAT_SYSTEM_PROMPT }, ...cleanMessages];
+
+    const attachmentError = validateAttachmentPayload(body);
+    if (attachmentError) {
+      return NextResponse.json({ error: attachmentError }, { status: 413 });
+    }
+    const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
+    const contextText = [
+      ...(body.contextBlocks ?? []),
+      ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
+    ].join("\n\n");
+    const chatImages = body.images ?? [];
+    useVision = chatImages.length > 0;
+
+    messages = [
+      { role: "system", content: CHAT_SYSTEM_PROMPT },
+      ...cleanMessages.map((m, idx) => {
+        const isLastUser = idx === cleanMessages.length - 1 && m.role === "user";
+        if (!isLastUser || (!contextText && chatImages.length === 0)) {
+          return { role: m.role, content: m.content };
+        }
+        const textPart = contextText ? `${m.content}\n\n${contextText}` : m.content;
+        if (chatImages.length === 0) return { role: m.role, content: textPart };
+        return {
+          role: m.role,
+          content: [
+            { type: "text" as const, text: textPart },
+            ...chatImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+          ],
+        };
+      }),
+    ];
     eventType = "studyforge.chat";
   } else {
     return NextResponse.json({ error: "Invalid or missing mode" }, { status: 400 });

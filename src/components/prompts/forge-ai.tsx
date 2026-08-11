@@ -17,6 +17,8 @@ import {
   extractApplicableText,
 } from "@/lib/forge-ai";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { AttachmentButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
+import { VoiceInputButton } from "@/components/shared/voice-input-button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -60,6 +62,7 @@ export function ForgeAiPanel({
   const [sending, setSending] = React.useState(false);
   const [size, setSize] = React.useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
   const [confirmReset, setConfirmReset] = React.useState(false);
+  const attachmentState = useAttachments();
 
   const dragControls = useDragControls();
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -85,13 +88,15 @@ export function ForgeAiPanel({
 
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    const withUser = [...messages, makeMessage("user", trimmed)];
+    if ((!trimmed && attachmentState.attachments.length === 0) || sending) return;
+    const withUser = [...messages, makeMessage("user", trimmed, attachmentState.attachments)];
     persist(withUser);
+    const pendingAttachments = attachmentState.attachments;
     setInput("");
+    attachmentState.clearAttachments();
     setSending(true);
     try {
-      const reply = await sendForgeAiMessage(promptBody, withUser);
+      const reply = await sendForgeAiMessage(promptBody, withUser, pendingAttachments);
       persist([...withUser, makeMessage("assistant", reply)]);
     } catch {
       toast.error("Forge AI couldn't respond — try again.");
@@ -223,7 +228,21 @@ export function ForgeAiPanel({
                     {m.role === "assistant" ? (
                       <MarkdownRenderer content={m.content} />
                     ) : (
-                      m.content
+                      <>
+                        {m.content}
+                        {m.attachments && m.attachments.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {m.attachments.map((a) => (
+                              <span
+                                key={a.name}
+                                className="rounded-full bg-accent-foreground/10 px-2 py-0.5 text-[10px] text-accent-foreground/80"
+                              >
+                                {a.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -289,24 +308,39 @@ export function ForgeAiPanel({
               e.preventDefault();
               void send(input);
             }}
-            className="flex shrink-0 items-end gap-2 border-t border-border p-2"
+            className="flex shrink-0 flex-col gap-1 border-t border-border p-2"
           >
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send(input);
-                }
-              }}
-              placeholder="Ask about this prompt…"
-              className="min-h-[40px] flex-1 resize-none text-sm"
-              rows={1}
+            <AttachmentChips
+              attachments={attachmentState.attachments}
+              onRemove={attachmentState.removeAttachment}
+              disabled={sending}
             />
-            <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={sending || !input.trim()} aria-label="Send message">
-              <Send className="h-4 w-4" />
-            </Button>
+            <div className="flex items-end gap-1.5">
+              <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
+              <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send(input);
+                  }
+                }}
+                placeholder="Ask about this prompt…"
+                className="min-h-[40px] flex-1 resize-none text-sm"
+                rows={1}
+              />
+              <Button
+                type="submit"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
+                aria-label="Send message"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
           </form>
 
           <div
