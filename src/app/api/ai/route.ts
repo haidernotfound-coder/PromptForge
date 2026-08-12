@@ -84,7 +84,10 @@ async function callGroq(apiKey: string, systemPrompt: string, input: string): Pr
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      // llama-3.1-8b-instant was deprecated by Groq (announced 2026-06-17);
+      // see console.groq.com/docs/deprecations. openai/gpt-oss-20b is Groq's
+      // recommended replacement.
+      model: "openai/gpt-oss-20b",
       max_tokens: 2000,
       temperature: 0.4,
       messages: [

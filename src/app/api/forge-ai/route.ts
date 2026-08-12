@@ -58,8 +58,12 @@ type GroqCallResult =
 
 // Text-only model as before; switched to a vision-capable one when the
 // user has attached images, same approach as StudyForge's route.
-const TEXT_MODEL = "llama-3.1-8b-instant";
-const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// llama-3.1-8b-instant and meta-llama/llama-4-scout-17b-16e-instruct were
+// deprecated by Groq (announced 2026-06-17, see console.groq.com/docs/deprecations)
+// and now fail every request with a non-2xx "model_decommissioned" error.
+// Groq's own recommended replacements:
+const TEXT_MODEL = "openai/gpt-oss-20b";
+const VISION_MODEL = "qwen/qwen3.6-27b";
 
 async function callGroq(
   apiKey: string,

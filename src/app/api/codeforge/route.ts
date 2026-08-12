@@ -129,10 +129,14 @@ type GroqCallResult =
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
   | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
-const TEXT_MODEL = "llama-3.1-8b-instant";
+// llama-3.1-8b-instant and meta-llama/llama-4-scout-17b-16e-instruct were
+// deprecated by Groq (announced 2026-06-17, see console.groq.com/docs/deprecations)
+// and now fail every request with a non-2xx "model_decommissioned" error.
+// Groq's own recommended replacements:
+const TEXT_MODEL = "openai/gpt-oss-20b";
 // Switched to a vision-capable model when the user has attached images —
-// llama-3.1-8b-instant can't read them, same reasoning as StudyForge/Forge AI.
-const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// the text model can't read them, same reasoning as StudyForge/Forge AI.
+const VISION_MODEL = "qwen/qwen3.6-27b";
 
 async function callGroq(
   apiKey: string,

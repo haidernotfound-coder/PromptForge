@@ -58,7 +58,10 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      // llama-3.3-70b-versatile was deprecated by Groq (announced 2026-06-17);
+      // see console.groq.com/docs/deprecations. openai/gpt-oss-120b is Groq's
+      // recommended replacement.
+      model: "openai/gpt-oss-120b",
       max_tokens: 8000,
       temperature: 0.6,
       response_format: { type: "json_object" },

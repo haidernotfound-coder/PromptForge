@@ -161,8 +161,13 @@ type GroqCallResult =
 // student-specified class/chapter) and defaulting to generic/lower-grade
 // content. When the student attaches images, we switch to Groq's vision
 // model instead — it's the only one of the two that can actually read them.
-const TEXT_MODEL = "llama-3.3-70b-versatile";
-const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// llama-3.3-70b-versatile and meta-llama/llama-4-scout-17b-16e-instruct were
+// deprecated by Groq (announced 2026-06-17, see console.groq.com/docs/deprecations)
+// and now return non-2xx "model_decommissioned" errors — which is exactly what
+// surfaced as "StudyForge provider request failed" for every chat/tool call,
+// attachments or not. Groq's own recommended replacements:
+const TEXT_MODEL = "openai/gpt-oss-120b";
+const VISION_MODEL = "qwen/qwen3.6-27b";
 
 async function callGroq(
   apiKey: string,
