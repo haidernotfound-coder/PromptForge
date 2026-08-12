@@ -85,6 +85,9 @@ async function callGroq(
         { role: "system", content: `${SYSTEM_PROMPT}\n\n<current_prompt>\n${promptBody || "(empty — nothing written yet)"}\n</current_prompt>` },
         ...messages,
       ],
+      // Qwen models emit inline <think> reasoning by default — hide it so
+      // it never leaks into the response content.
+      ...(opts.vision ? { reasoning_format: "hidden" } : {}),
     }),
   });
 

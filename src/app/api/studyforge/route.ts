@@ -186,6 +186,9 @@ async function callGroq(
       temperature: 0.4,
       messages,
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+      // Qwen models emit inline <think> reasoning by default — hide it so
+      // it never leaks into the response content.
+      ...(opts.vision ? { reasoning_format: "hidden" } : {}),
     }),
   });
 

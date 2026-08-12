@@ -154,6 +154,9 @@ async function callGroq(
       max_tokens: 3000,
       temperature: 0.3,
       messages,
+      // Qwen models emit inline <think> reasoning by default — hide it so
+      // it never leaks into the response content.
+      ...(opts.vision ? { reasoning_format: "hidden" } : {}),
     }),
   });
 
