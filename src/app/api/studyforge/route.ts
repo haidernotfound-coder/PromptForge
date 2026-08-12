@@ -153,7 +153,7 @@ type GroqMessage = { role: "system" | "user" | "assistant"; content: GroqMessage
 type GroqCallResult =
   | { ok: true; output: string }
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
-  | { ok: false; exhausted: false; status: number; detail?: string }; // other failure — stop retrying
+  | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
 // llama-3.3-70b-versatile follows multi-constraint instructions (grade level
 // + chapter + count, all at once) far more reliably than the 8b-instant
@@ -195,7 +195,7 @@ async function callGroq(
     if (response.status === 429 || response.status === 401 || response.status === 403) {
       return { ok: false, exhausted: true };
     }
-    return { ok: false, exhausted: false, status: response.status, detail: detail.slice(0, 500) };
+    return { ok: false, exhausted: false, status: response.status };
   }
 
   const data = await response.json();
@@ -396,7 +396,7 @@ export async function POST(request: Request) {
     const startIndex = getLastGoodKeyIndex("studyforge");
     const order = keys.map((_, i) => (startIndex + i) % keys.length);
 
-    let lastFailure: { exhausted: boolean; status?: number; detail?: string } | null = null;
+    let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
       const result = await callGroq(keys[i], messages, { json: isFlashcards, vision: useVision });
@@ -418,7 +418,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ output: result.output });
       }
 
-      lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status, detail: result.detail };
+      lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status };
 
       if (!result.exhausted) {
         // A non-quota failure (bad request, provider outage, etc.) — no
@@ -437,14 +437,7 @@ export async function POST(request: Request) {
     });
 
     if (lastFailure && !lastFailure.exhausted) {
-      // Surface the provider's actual error text (truncated, key already
-      // stripped out — it never touches this string) so failures are
-      // debuggable from the client instead of only in server logs.
-      const suffix = lastFailure.detail ? `: ${lastFailure.detail}` : "";
-      return NextResponse.json(
-        { error: `StudyForge provider request failed (status ${lastFailure.status ?? "unknown"})${suffix}` },
-        { status: lastFailure.status ?? 502 }
-      );
+      return NextResponse.json({ error: "StudyForge provider request failed" }, { status: lastFailure.status ?? 502 });
     }
     // Every configured key was exhausted (rate-limited or invalid).
     return NextResponse.json(

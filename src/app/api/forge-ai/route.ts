@@ -54,7 +54,7 @@ type GroqMessage = { role: "system" | "user" | "assistant"; content: GroqMessage
 type GroqCallResult =
   | { ok: true; output: string }
   | { ok: false; exhausted: true } // 401/403/429 — try the next key
-  | { ok: false; exhausted: false; status: number; detail?: string }; // other failure — stop retrying
+  | { ok: false; exhausted: false; status: number }; // other failure — stop retrying
 
 // Text-only model as before; switched to a vision-capable one when the
 // user has attached images, same approach as StudyForge's route.
@@ -94,7 +94,7 @@ async function callGroq(
     if (response.status === 429 || response.status === 401 || response.status === 403) {
       return { ok: false, exhausted: true };
     }
-    return { ok: false, exhausted: false, status: response.status, detail: detail.slice(0, 500) };
+    return { ok: false, exhausted: false, status: response.status };
   }
 
   const data = await response.json();
@@ -187,7 +187,7 @@ export async function POST(request: Request) {
     const startIndex = getLastGoodKeyIndex("forge_ai");
     const order = keys.map((_, i) => (startIndex + i) % keys.length);
 
-    let lastFailure: { exhausted: boolean; status?: number; detail?: string } | null = null;
+    let lastFailure: { exhausted: boolean; status?: number } | null = null;
 
     for (const i of order) {
       const result = await callGroq(keys[i], promptBody, groqMessages, { vision: useVision });
@@ -199,7 +199,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ output: result.output });
       }
 
-      lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status, detail: result.detail };
+      lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status };
 
       if (!result.exhausted) break;
     }
@@ -212,11 +212,7 @@ export async function POST(request: Request) {
     });
 
     if (lastFailure && !lastFailure.exhausted) {
-      const suffix = lastFailure.detail ? `: ${lastFailure.detail}` : "";
-      return NextResponse.json(
-        { error: `Forge AI provider request failed (status ${lastFailure.status ?? "unknown"})${suffix}` },
-        { status: lastFailure.status ?? 502 }
-      );
+      return NextResponse.json({ error: "Forge AI provider request failed" }, { status: lastFailure.status ?? 502 });
     }
     return NextResponse.json(
       { error: "All configured Forge AI provider keys are currently rate-limited or invalid" },
