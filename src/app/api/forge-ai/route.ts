@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { isForgeAiConfigured, getForgeAiApiKeys, getForgeAiKeyLabels } from "@/lib/supabase/config";
-import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { isForgeAiConfigured, getForgeAiApiKeys, getForgeAiKeyLabels, isGeminiConfigured, getGeminiApiKeys, getGeminiKeyLabels } from "@/lib/supabase/config";
+import { getLastGoodKeyIndex, setLastGoodKeyIndex, getLastGoodGeminiKeyIndex, setLastGoodGeminiKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
 import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
 import { extractDocuments } from "@/lib/server/attachment-extract";
+import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
 
 /**
  * Forge AI provider wiring — the floating chat panel's own endpoint.
@@ -152,16 +153,77 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: attachmentError }, { status: 413 });
   }
 
-  // Extract any PDF/DOCX attachments to text server-side, then fold every
-  // bit of attachment context (text files + extracted documents) into the
-  // last user turn so the model sees it as part of what was just asked.
-  const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
+  const images = body.images ?? [];
+  const documents = body.documents ?? [];
+  const hasAttachments = images.length > 0 || documents.length > 0;
+  const session = await getAppSessionOrNull();
+
+  // Any turn carrying an image or document is routed to Gemini instead of
+  // Groq — it can actually read PDFs/DOCX/ZIPs/images natively, rather than
+  // a flattened text extraction plus a single vision model. Plain text/code
+  // attachments (already extracted client-side into contextBlocks) don't
+  // need this — they stay on the normal Groq path either way.
+  if (hasAttachments && isGeminiConfigured()) {
+    const geminiHistory: GeminiChatTurn[] = cleanMessages.map((m) => ({ role: m.role, content: m.content }));
+    const extraContextText = (body.contextBlocks ?? []).join("\n\n");
+    const geminiKeys = getGeminiApiKeys();
+    const geminiKeyLabels = getGeminiKeyLabels();
+    const startIndex = getLastGoodGeminiKeyIndex();
+
+    const { result, goodKeyIndex, attempts } = await runGeminiChat(
+      {
+        keys: geminiKeys,
+        systemInstruction: `${SYSTEM_PROMPT}\n\n<current_prompt>\n${promptBody || "(empty — nothing written yet)"}\n</current_prompt>`,
+        history: geminiHistory,
+        images: images.map((dataUrl) => ({ dataUrl })),
+        documents: documents.map((d) => ({ name: d.name, mimeType: d.mimeType, base64: d.base64, geminiFileUri: d.geminiFileUri })),
+        extraContextText,
+      },
+      startIndex
+    );
+
+    for (const attempt of attempts) {
+      await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[attempt.keyIndex] ?? `key-${attempt.keyIndex + 1}`, success: false });
+    }
+
+    if (result.ok) {
+      if (goodKeyIndex !== undefined) {
+        setLastGoodGeminiKeyIndex(goodKeyIndex);
+        await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
+      }
+      await recordEvent({ userLabel: session?.email, eventType: "forge_ai.chat", success: true, metadata: { provider: "gemini" } });
+      return NextResponse.json({ output: result.output });
+    }
+
+    await recordEvent({
+      userLabel: session?.email,
+      eventType: "ai.error",
+      success: false,
+      metadata: { action: "forge_ai_chat", provider: "gemini", reason: result.exhausted ? "rate_limited" : "provider_error" },
+    });
+
+    if (!result.exhausted) {
+      const suffix = result.detail ? `: ${result.detail}` : "";
+      return NextResponse.json(
+        { error: `Forge AI couldn't process the attached file(s)${suffix}` },
+        { status: 422 }
+      );
+    }
+    return NextResponse.json(
+      { error: "All configured Gemini attachment keys are currently rate-limited or invalid — try again shortly." },
+      { status: 429 }
+    );
+  }
+
+  // No attachments (or Gemini isn't configured — fall back to the local
+  // text-extraction + Groq-vision path so attachments still work in
+  // reduced form on a Groq-only install).
+  const extractedDocs = documents.length ? await extractDocuments(documents) : [];
   const contextText = [
     ...(body.contextBlocks ?? []),
     ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
   ].join("\n\n");
 
-  const images = body.images ?? [];
   const useVision = images.length > 0;
 
   const groqMessages: GroqMessage[] = cleanMessages.map((m, idx) => {
@@ -182,7 +244,6 @@ export async function POST(request: Request) {
     };
   });
 
-  const session = await getAppSessionOrNull();
   const keyLabels = getForgeAiKeyLabels();
 
   try {

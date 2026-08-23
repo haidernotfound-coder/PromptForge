@@ -16,6 +16,7 @@ const POOL_TITLES: Record<GroqPoolStatus["pool"], string> = {
   codeforge: "CodeForge tools + chat",
   studyforge: "StudyForge tools + chat",
   pptforge: "PPTForge generation",
+  gemini: "Gemini (attachments)",
 };
 
 export function PoolCard({ pool }: { pool: GroqPoolStatus }) {
@@ -33,7 +34,9 @@ export function PoolCard({ pool }: { pool: GroqPoolStatus }) {
       <CardContent className="space-y-4">
         {pool.keys.length === 0 && (
           <p className="text-sm text-text-muted">
-            No keys configured for this pool — it falls back to the local simulation.
+            {pool.pool === "gemini"
+              ? "No Gemini keys configured — attachments fall back to each product's Groq vision model plus local text extraction."
+              : "No keys configured for this pool — it falls back to the local simulation."}
           </p>
         )}
         {pool.keys.map((key) => (
@@ -86,8 +89,8 @@ export function GroqMonitor({ data }: { data: GroqMonitorData }) {
           <div>
             <CardTitle className="text-base">Combined across all fallback pools</CardTitle>
             <CardDescription>
-              Prompt AI actions, Forge AI chat, CodeForge, and StudyForge each use fully independent key pools —
-              this is their sum.
+              Prompt AI actions, Forge AI chat, CodeForge, StudyForge, PPTForge, and Gemini (attachments) each use
+              fully independent key pools — this is their sum.
             </CardDescription>
           </div>
         </CardHeader>

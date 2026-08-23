@@ -8,8 +8,12 @@
  */
 
 export type GroqPool = "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge";
+export type GeminiPool = "gemini";
 
 const lastGoodIndex: Record<GroqPool, number> = { ai: 0, forge_ai: 0, codeforge: 0, studyforge: 0, pptforge: 0 };
+// Gemini is one shared pool across all three products (see lib/server/gemini.ts),
+// tracked separately from the per-product Groq pools above.
+let lastGoodGeminiIndex = 0;
 
 export function getLastGoodKeyIndex(pool: GroqPool): number {
   return lastGoodIndex[pool];
@@ -17,4 +21,12 @@ export function getLastGoodKeyIndex(pool: GroqPool): number {
 
 export function setLastGoodKeyIndex(pool: GroqPool, index: number): void {
   lastGoodIndex[pool] = index;
+}
+
+export function getLastGoodGeminiKeyIndex(): number {
+  return lastGoodGeminiIndex;
+}
+
+export function setLastGoodGeminiKeyIndex(index: number): void {
+  lastGoodGeminiIndex = index;
 }

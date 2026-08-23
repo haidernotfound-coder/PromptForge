@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { isStudyForgeConfigured, getStudyForgeApiKeys, getStudyForgeKeyLabels } from "@/lib/supabase/config";
-import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { isStudyForgeConfigured, getStudyForgeApiKeys, getStudyForgeKeyLabels, isGeminiConfigured, getGeminiApiKeys, getGeminiKeyLabels } from "@/lib/supabase/config";
+import { getLastGoodKeyIndex, setLastGoodKeyIndex, getLastGoodGeminiKeyIndex, setLastGoodGeminiKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings, type EventType } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
 import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
 import { extractDocuments } from "@/lib/server/attachment-extract";
+import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
 
 /**
  * StudyForge provider wiring — the third NexPrompt product's API surface.
@@ -358,12 +359,75 @@ export async function POST(request: Request) {
     if (attachmentError) {
       return NextResponse.json({ error: attachmentError }, { status: 413 });
     }
-    const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
+    const chatImages = body.images ?? [];
+    const chatDocuments = body.documents ?? [];
+    const hasAttachments = chatImages.length > 0 || chatDocuments.length > 0;
+
+    // Any turn carrying an image or document is routed to Gemini — it can
+    // actually read PDFs/DOCX/ZIPs/images natively (tables, charts, layout
+    // for PDFs) rather than a flattened text extraction plus one vision
+    // model.
+    if (hasAttachments && isGeminiConfigured()) {
+      const session = await getAppSessionOrNull();
+      const geminiHistory: GeminiChatTurn[] = cleanMessages.map((m) => ({ role: m.role, content: m.content }));
+      const extraContextText = (body.contextBlocks ?? []).join("\n\n");
+      const geminiKeys = getGeminiApiKeys();
+      const geminiKeyLabels = getGeminiKeyLabels();
+      const startIndex = getLastGoodGeminiKeyIndex();
+
+      const { result, goodKeyIndex, attempts } = await runGeminiChat(
+        {
+          keys: geminiKeys,
+          systemInstruction: CHAT_SYSTEM_PROMPT,
+          history: geminiHistory,
+          images: chatImages.map((dataUrl) => ({ dataUrl })),
+          documents: chatDocuments.map((d) => ({ name: d.name, mimeType: d.mimeType, base64: d.base64, geminiFileUri: d.geminiFileUri })),
+          extraContextText,
+        },
+        startIndex
+      );
+
+      for (const attempt of attempts) {
+        await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[attempt.keyIndex] ?? `key-${attempt.keyIndex + 1}`, success: false });
+      }
+
+      if (result.ok) {
+        if (goodKeyIndex !== undefined) {
+          setLastGoodGeminiKeyIndex(goodKeyIndex);
+          await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
+        }
+        await recordEvent({ userLabel: session?.email, eventType: "studyforge.chat", success: true, metadata: { provider: "gemini" } });
+        return NextResponse.json({ output: result.output });
+      }
+
+      await recordEvent({
+        userLabel: session?.email,
+        eventType: "ai.error",
+        success: false,
+        metadata: { source: "studyforge", provider: "gemini", reason: result.exhausted ? "rate_limited" : "provider_error" },
+      });
+
+      if (!result.exhausted) {
+        const suffix = result.detail ? `: ${result.detail}` : "";
+        return NextResponse.json(
+          { error: `StudyForge couldn't process the attached file(s)${suffix}` },
+          { status: 422 }
+        );
+      }
+      return NextResponse.json(
+        { error: "All configured Gemini attachment keys are currently rate-limited or invalid — try again shortly." },
+        { status: 429 }
+      );
+    }
+
+    // No attachments (or Gemini isn't configured — fall back to the local
+    // text-extraction + Groq-vision path so attachments still work in
+    // reduced form on a Groq-only install).
+    const extractedDocs = chatDocuments.length ? await extractDocuments(chatDocuments) : [];
     const contextText = [
       ...(body.contextBlocks ?? []),
       ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
     ].join("\n\n");
-    const chatImages = body.images ?? [];
     useVision = chatImages.length > 0;
 
     messages = [

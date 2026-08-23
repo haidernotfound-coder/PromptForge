@@ -208,3 +208,43 @@ export function getPptForgeKeyLabels(): string[] {
   }
   return labels.length > 0 ? labels : getGroqKeyLabels();
 }
+
+/**
+ * Gemini — the multimodal/attachment provider shared by Forge AI, CodeForge,
+ * and StudyForge's chats. Normal text-only chat keeps using each product's
+ * own Groq pool above; the moment a chat turn carries an attachment (image,
+ * PDF, DOCX, ZIP, or anything the client sends up as an image/document), the
+ * request is routed to Gemini instead, since it can actually read those file
+ * types natively instead of Groq's text-only + limited-vision setup.
+ *
+ * One shared pool — `GEMINI_API_KEY_1`..`GEMINI_API_KEY_7` (and unsuffixed
+ * `GEMINI_API_KEY` as key 1, for a single-key setup) — rather than a
+ * separate pool per product, since attachment traffic is comparatively rare
+ * next to normal chat traffic and doesn't need per-product quota isolation.
+ * Same instant-retry-on-the-next-key shape as every Groq pool above.
+ */
+export function getGeminiApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 7; i++) {
+    const key = process.env[`GEMINI_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export function isGeminiConfigured(): boolean {
+  return getGeminiApiKeys().length > 0;
+}
+
+/** Same purpose as `getGroqKeyLabels`, for the 7-slot Gemini pool. */
+export function getGeminiKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.GEMINI_API_KEY_1) labels.push("GEMINI_API_KEY_1");
+  else if (process.env.GEMINI_API_KEY) labels.push("GEMINI_API_KEY");
+  for (let i = 2; i <= 7; i++) {
+    if (process.env[`GEMINI_API_KEY_${i}`]) labels.push(`GEMINI_API_KEY_${i}`);
+  }
+  return labels;
+}

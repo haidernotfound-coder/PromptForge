@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { isCodeForgeConfigured, getCodeForgeApiKeys, getCodeForgeKeyLabels } from "@/lib/supabase/config";
-import { getLastGoodKeyIndex, setLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { isCodeForgeConfigured, getCodeForgeApiKeys, getCodeForgeKeyLabels, isGeminiConfigured, getGeminiApiKeys, getGeminiKeyLabels } from "@/lib/supabase/config";
+import { getLastGoodKeyIndex, setLastGoodKeyIndex, getLastGoodGeminiKeyIndex, setLastGoodGeminiKeyIndex } from "@/lib/admin/groq-router-state";
 import { recordEvent, recordGroqUsage, getSystemSettings, type EventType } from "@/lib/admin/store";
 import { getAppSessionOrNull } from "@/lib/session";
 import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
 import { extractDocuments } from "@/lib/server/attachment-extract";
+import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
 
 /**
  * CodeForge provider wiring — the second NexPrompt product's API surface.
@@ -219,13 +220,8 @@ export async function POST(request: Request) {
   if (attachmentError) {
     return NextResponse.json({ error: attachmentError }, { status: 413 });
   }
-  const extractedDocs = body.documents?.length ? await extractDocuments(body.documents) : [];
-  const contextText = [
-    ...(body.contextBlocks ?? []),
-    ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
-  ].join("\n\n");
   const images = body.images ?? [];
-  const useVision = images.length > 0;
+  const documents = body.documents ?? [];
 
   let messages: GroqMessage[];
   let eventType: EventType;
@@ -264,6 +260,75 @@ export async function POST(request: Request) {
     if (totalLength > 60_000) {
       return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
     }
+
+    const hasAttachments = images.length > 0 || documents.length > 0;
+
+    // Any turn carrying an image or document (PDF/DOCX/ZIP) is routed to
+    // Gemini — it can actually read those file types natively (including
+    // reviewing real code inside a ZIP), rather than a flattened text
+    // extraction plus a single vision model.
+    if (hasAttachments && isGeminiConfigured()) {
+      const session = await getAppSessionOrNull();
+      const geminiHistory: GeminiChatTurn[] = cleanMessages.map((m) => ({ role: m.role, content: m.content }));
+      const extraContextText = (body.contextBlocks ?? []).join("\n\n");
+      const geminiKeys = getGeminiApiKeys();
+      const geminiKeyLabels = getGeminiKeyLabels();
+      const startIndex = getLastGoodGeminiKeyIndex();
+
+      const { result, goodKeyIndex, attempts } = await runGeminiChat(
+        {
+          keys: geminiKeys,
+          systemInstruction: CHAT_SYSTEM_PROMPT,
+          history: geminiHistory,
+          images: images.map((dataUrl) => ({ dataUrl })),
+          documents: documents.map((d) => ({ name: d.name, mimeType: d.mimeType, base64: d.base64, geminiFileUri: d.geminiFileUri })),
+          extraContextText,
+        },
+        startIndex
+      );
+
+      for (const attempt of attempts) {
+        await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[attempt.keyIndex] ?? `key-${attempt.keyIndex + 1}`, success: false });
+      }
+
+      if (result.ok) {
+        if (goodKeyIndex !== undefined) {
+          setLastGoodGeminiKeyIndex(goodKeyIndex);
+          await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
+        }
+        await recordEvent({ userLabel: session?.email, eventType: "codeforge.chat", success: true, metadata: { provider: "gemini" } });
+        return NextResponse.json({ output: result.output });
+      }
+
+      await recordEvent({
+        userLabel: session?.email,
+        eventType: "ai.error",
+        success: false,
+        metadata: { source: "codeforge", provider: "gemini", reason: result.exhausted ? "rate_limited" : "provider_error" },
+      });
+
+      if (!result.exhausted) {
+        const suffix = result.detail ? `: ${result.detail}` : "";
+        return NextResponse.json(
+          { error: `CodeForge couldn't process the attached file(s)${suffix}` },
+          { status: 422 }
+        );
+      }
+      return NextResponse.json(
+        { error: "All configured Gemini attachment keys are currently rate-limited or invalid — try again shortly." },
+        { status: 429 }
+      );
+    }
+
+    // No attachments (or Gemini isn't configured — fall back to the local
+    // text-extraction + Groq-vision path so attachments still work in
+    // reduced form on a Groq-only install).
+    const extractedDocs = documents.length ? await extractDocuments(documents) : [];
+    const contextText = [
+      ...(body.contextBlocks ?? []),
+      ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
+    ].join("\n\n");
+
     messages = [
       { role: "system", content: CHAT_SYSTEM_PROMPT },
       ...cleanMessages.map((m, idx) => {
@@ -287,6 +352,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid or missing mode" }, { status: 400 });
   }
 
+  const useVision = images.length > 0;
   const session = await getAppSessionOrNull();
   const keyLabels = getCodeForgeKeyLabels();
 

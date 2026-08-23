@@ -8,15 +8,17 @@ import {
   getStudyForgeApiKeys,
   getStudyForgeKeyLabels,
   getPptForgeKeyLabels,
+  getGeminiKeyLabels,
   isAiConfigured,
   isForgeAiConfigured,
   isCodeForgeConfigured,
   isStudyForgeConfigured,
   isPptForgeConfigured,
+  isGeminiConfigured,
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getLastGoodKeyIndex } from "@/lib/admin/groq-router-state";
+import { getLastGoodKeyIndex, getLastGoodGeminiKeyIndex, type GroqPool } from "@/lib/admin/groq-router-state";
 import {
   getRecentEvents,
   getGroqUsageToday,
@@ -35,6 +37,15 @@ function dailyLimitPerKey(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 14_400;
 }
 
+// Gemini's free tier is request-per-minute/day quota that varies by model
+// and account, unlike Groq's flatter per-key daily budget — so its "limit"
+// here is just a generic display budget for the same progress-bar UI,
+// overridable independently of GROQ_DAILY_LIMIT_PER_KEY.
+function geminiDailyLimitPerKey(): number {
+  const raw = Number(process.env.GEMINI_DAILY_LIMIT_PER_KEY);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1_500;
+}
+
 export interface GroqKeyStatus {
   label: string;
   masked: string;
@@ -47,7 +58,7 @@ export interface GroqKeyStatus {
 }
 
 export interface GroqPoolStatus {
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge";
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge" | "gemini";
   name: string;
   configured: boolean;
   keys: GroqKeyStatus[];
@@ -71,14 +82,14 @@ function maskKeyLabel(label: string): string {
 }
 
 async function buildPool(
-  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge",
+  pool: "ai" | "forge_ai" | "codeforge" | "studyforge" | "pptforge" | "gemini",
   name: string,
   configured: boolean,
-  labels: string[]
+  labels: string[],
+  opts: { activeIndex: number; limit: number } = { activeIndex: getLastGoodKeyIndex(pool as GroqPool), limit: dailyLimitPerKey() }
 ): Promise<GroqPoolStatus> {
   const usage = await getGroqUsageToday(labels.map((keyLabel) => ({ pool, keyLabel })));
-  const activeIndex = getLastGoodKeyIndex(pool);
-  const limit = dailyLimitPerKey();
+  const { activeIndex, limit } = opts;
 
   const keys: GroqKeyStatus[] = labels.map((label, i) => {
     const u = usage.find((row) => row.keyLabel === label);
@@ -107,15 +118,22 @@ async function buildPool(
 }
 
 export async function getGroqMonitorData(): Promise<GroqMonitorData> {
-  const [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool] = await Promise.all([
+  const [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool, geminiPool] = await Promise.all([
     buildPool("ai", "Improve / Rewrite / Expand / Shorten / Critique", isAiConfigured(), getGroqKeyLabels()),
     buildPool("forge_ai", "Forge AI chat", isForgeAiConfigured(), getForgeAiKeyLabels()),
     buildPool("codeforge", "CodeForge tools + chat", isCodeForgeConfigured(), getCodeForgeKeyLabels()),
     buildPool("studyforge", "StudyForge tools + chat", isStudyForgeConfigured(), getStudyForgeKeyLabels()),
     buildPool("pptforge", "PPTForge generation", isPptForgeConfigured(), getPptForgeKeyLabels()),
+    // Gemini keeps its own "last good key" tracker (shared across all three
+    // products' attachment traffic), so it's built separately rather than
+    // through getLastGoodKeyIndex's GroqPool-only signature.
+    buildPool("gemini", "Gemini (attachment/multimodal)", isGeminiConfigured(), getGeminiKeyLabels(), {
+      activeIndex: getLastGoodGeminiKeyIndex(),
+      limit: geminiDailyLimitPerKey(),
+    }),
   ]);
 
-  const pools = [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool];
+  const pools = [aiPool, forgeAiPool, codeforgePool, studyforgePool, pptforgePool, geminiPool];
   return {
     pools,
     combined: {

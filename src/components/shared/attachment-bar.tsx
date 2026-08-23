@@ -115,7 +115,7 @@ export function AttachmentButton({
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         aria-label="Attach files"
-        title="Attach files (images, PDF, DOCX, TXT, CSV, code — up to 100 MB each)"
+        title="Attach files (images, PDF, DOCX, ZIP, TXT, CSV, code — up to 100 MB each)"
         className={cn("h-9 w-9 shrink-0", className)}
       >
         <Paperclip className="h-4 w-4" />
