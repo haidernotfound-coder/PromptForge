@@ -21,7 +21,7 @@ import { GoogleGenAI, ApiError, type Content, type Part } from "@google/genai";
  * keys on a request that will fail identically on every one of them.
  */
 
-export const GEMINI_TEXT_MODEL = "gemini-2.5-flash";
+export const GEMINI_TEXT_MODEL = "gemini-3.6-flash";
 // Files above this size go through the Gemini Files API (upload once, then
 // reference by URI) instead of being inlined as base64 in the same request
 // that also carries the model prompt — keeps the generateContent request
