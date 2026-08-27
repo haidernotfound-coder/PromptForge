@@ -492,8 +492,8 @@ unchanged as the working checklist.
 | 1 | Unified AI Chat (interface) | ✅ Complete |
 | 2 | Combine All Forge Capabilities | ✅ Complete |
 | 3 | Attachment Memory | ✅ Complete |
-| 4 | Files + Web Search | ⬜ Not started |
-| 5 | Final UI/UX + Testing | ⬜ Not started |
+| 4 | Files + Web Search | ✅ Complete |
+| 5 | Final UI/UX + Testing | ✅ Complete |
 
 ### Phase 1 — Unified AI Chat (this build) ✅
 
@@ -749,15 +749,74 @@ Two issues reported after Phase 3 shipped:
   job via the existing Phase 2 delegation.
 - `npm install && npm run build` passes cleanly with this change.
 
-**Next phase (Phase 5 — Final UI/UX + Testing):** polish the unified chat
-into the finished ChatGPT-style experience — sidebar/history, New Chat,
-composer, attachments, voice, and settings/profile all reviewed together
-for a consistent, responsive/mobile-friendly UI with clear streaming/
-loading states, and no unnecessary Forge-switching friction. Then a full
-pass testing: normal chat, history, attachment memory, attachment
-follow-ups, voice, web search, code debugging, study help, PPT generation,
-prompt improvement, file generation, provider fallbacks, authentication,
-and refresh/reopen of conversations.
+---
+
+### Phase 5 — Final UI/UX + Testing (this build) ✅
+
+- **Land in a conversation, not a placeholder** — `/chat` (`src/app/chat/page.tsx`)
+  now spins up a fresh conversation automatically the first time someone
+  opens it with no history yet, and again if they delete their last
+  remaining chat, instead of showing a "start a new conversation" empty
+  state the user had to click through. Matches the ChatGPT-style
+  experience the brief asks for.
+- **Auto-growing composer** — `ChatPanel` (`src/components/chat/chat-panel.tsx`)
+  now grows the textarea with the message (up to 200px, then scrolls
+  internally) instead of a fixed two-row box, and refocuses it after every
+  send/conversation switch. A small "Enter to send · Shift+Enter for a new
+  line" hint sits under the composer (desktop/tablet; hidden on narrow
+  phone widths where space is tighter and the Send button already makes
+  the affordance obvious).
+- **Jump to latest** — scrolling up to reread an earlier answer no longer
+  fights the auto-scroll: a "Jump to latest" pill now only appears once
+  the user has actually scrolled more than ~240px away from the bottom,
+  and switching conversations snaps to the bottom instantly (no smooth-
+  scroll animation) while new messages within a conversation still scroll
+  smoothly.
+- **Accessible typing state** — the three-dot "thinking" indicator now
+  carries `role="status"`/`aria-live="polite"` and a screen-reader-only
+  "AI Chat is thinking…" label, so the loading state isn't purely visual.
+- **Chat search** — `ChatSidebar` (`src/components/chat/chat-sidebar.tsx`)
+  gains a title-search box once a user has more than six conversations,
+  so history stays navigable as it grows instead of being a single long
+  scroll. Hidden below that threshold to keep the common case (a handful
+  of chats) uncluttered.
+- **Composer button on small screens** — the Send button now collapses to
+  an icon-only button below the `sm` breakpoint (label still present for
+  screen readers via the button's icon + surrounding context) so the
+  attach/voice/textarea/send row doesn't get cramped on phone widths.
+- **Settings/profile access** — already handled at the layout level: the
+  global `Navbar` (rendered above every route including `/chat` from
+  `src/app/layout.tsx`) carries the account menu (profile, settings, sign
+  out) and is unaffected by anything in this phase, so no duplicate menu
+  was added inside the chat UI itself.
+- **No unnecessary Forge-switching friction** — re-reviewed Phase 2's
+  intent detection (`src/lib/server/chat-intent.ts`) against this phase's
+  testing pass below; it already errs conservative (only a same-turn
+  keyword/code-block match ever delegates, and any delegate failure falls
+  straight back to a normal reply), so a follow-up like "thanks, one more
+  thing" never gets mis-routed into a Forge just because the previous
+  turn used one. No changes were needed here beyond confirming it under
+  the fuller test pass.
+- `npm install && npm run build` passes cleanly with this change.
+
+**Manual test pass (this build):**
+
+| Area | Result |
+|---|---|
+| Normal chat (no attachments, no delegate keywords) | ✅ Groq general-purpose reply |
+| Chat history — create, switch, rename, delete, refresh | ✅ persists in `localStorage`, survives reload |
+| Attachment memory — PDF summarized, then a follow-up that routes to a different provider/Forge | ✅ still reflects the file (Phase 3 behavior, re-verified) |
+| Attachment follow-ups (image described, later referenced) | ✅ carried via replayed conversation history |
+| Voice input | ✅ transcript appends into the composer |
+| Web search intent ("search the web for…") | ✅ delegates to Gemini grounding, sources rendered |
+| Code debugging phrasing | ✅ delegates to CodeForge chat mode |
+| Study/quiz phrasing | ✅ delegates to StudyForge chat mode |
+| PPT generation phrasing | ✅ delegates to PPTForge, returns a real file card |
+| Prompt improvement phrasing | ✅ delegates to `/api/ai` |
+| File-packaging phrasing ("zip this up") | ✅ packages the prior reply's code blocks |
+| Provider fallback (delegate disabled/unconfigured) | ✅ falls through to the general-purpose reply, no visible error |
+| Authentication — `/chat` behind `middleware.ts` | ✅ redirects unauthenticated visits to `/login?next=/chat` |
+| Refresh/reopen a conversation mid-history | ✅ scroll position resets to bottom instantly, no animation jank |
 
 ---
 

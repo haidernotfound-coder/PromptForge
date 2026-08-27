@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon } from "lucide-react";
+import { Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,8 @@ export function ChatPanel({
   const [configured, setConfigured] = React.useState<boolean | null>(null);
   const attachmentState = useAttachments();
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
   const messages = conversation.messages;
 
   React.useEffect(() => {
@@ -50,9 +52,50 @@ export function ChatPanel({
     };
   }, []);
 
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  // Jump straight to the bottom on a conversation switch (no animation —
+  // it should feel instant, not like the reply just arrived), but keep the
+  // smooth scroll for new messages/typing within the same conversation.
   React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, sending]);
+    scrollToBottom("auto");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id]);
+
+  React.useEffect(() => {
+    scrollToBottom("smooth");
+  }, [messages, sending, scrollToBottom]);
+
+  // Only show the "jump to latest" affordance once the user has actually
+  // scrolled away from the bottom (e.g. to reread an earlier answer) — not
+  // on every keystroke while they're already at the bottom typing.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function handleScroll() {
+      const distanceFromBottom = el!.scrollHeight - el!.scrollTop - el!.clientHeight;
+      setShowJumpToLatest(distanceFromBottom > 240);
+    }
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-grow the composer as the user types (up to a sane cap), matching
+  // the ChatGPT-style composer called for in Phase 5 instead of a fixed
+  // 2-row box that scrolls internally for longer messages.
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [input]);
+
+  React.useEffect(() => {
+    if (!sending) textareaRef.current?.focus();
+  }, [sending, conversation.id]);
 
   async function send(text: string) {
     const trimmed = text.trim();
@@ -62,6 +105,7 @@ export function ChatPanel({
     onMessagesChange(withUser);
     const pendingAttachments = attachmentState.attachments;
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     attachmentState.clearAttachments();
     setSending(true);
     try {
@@ -114,9 +158,10 @@ export function ChatPanel({
         </div>
       </div>
 
+      <div className="relative flex-1 min-h-0">
       <div
         ref={scrollRef}
-        className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-border bg-surface-raised p-4"
+        className="h-full space-y-4 overflow-y-auto rounded-lg border border-border bg-surface-raised p-4"
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -200,7 +245,7 @@ export function ChatPanel({
           ))
         )}
         {sending && (
-          <div className="flex animate-fade-in items-end gap-2.5">
+          <div className="flex animate-fade-in items-end gap-2.5" role="status" aria-live="polite">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
               <Bot className="h-4 w-4" />
             </span>
@@ -208,9 +253,21 @@ export function ChatPanel({
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
+              <span className="sr-only">AI Chat is thinking…</span>
             </div>
           </div>
         )}
+      </div>
+
+      {showJumpToLatest && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom()}
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-text-muted shadow-md transition-colors hover:bg-surface hover:text-text"
+        >
+          <ArrowDown className="h-3.5 w-3.5" /> Jump to latest
+        </button>
+      )}
       </div>
 
       {messages.length === 0 && (
@@ -235,6 +292,7 @@ export function ChatPanel({
           <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
           <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
           <Textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -244,18 +302,22 @@ export function ChatPanel({
               }
             }}
             placeholder="Message AI Chat…"
-            rows={2}
-            className="resize-none"
+            rows={1}
+            className="min-h-[44px] max-h-[200px] resize-none overflow-y-auto py-2.5"
+            aria-label="Message AI Chat"
           />
           <Button
             onClick={() => void send(input)}
             disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
-            className="h-10 gap-1.5"
+            className="h-10 shrink-0 gap-1.5"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Send
+            <span className="hidden sm:inline">Send</span>
           </Button>
         </div>
+        <p className="hidden text-center text-[11px] text-text-faint sm:block">
+          Enter to send · Shift+Enter for a new line
+        </p>
       </div>
     </div>
   );

@@ -23,8 +23,18 @@ export default function ChatPage() {
 
   React.useEffect(() => {
     const loaded = loadChatConversations();
-    setConversations(loaded);
-    setActiveId(loaded[0]?.id ?? null);
+    // Land straight in a fresh conversation on a brand-new browser instead
+    // of an empty "start a new conversation" placeholder — one less click
+    // to the ChatGPT-style experience Phase 5 calls for.
+    if (loaded.length === 0) {
+      const fresh = createChatConversation();
+      setConversations([fresh]);
+      saveChatConversations([fresh]);
+      setActiveId(fresh.id);
+    } else {
+      setConversations(loaded);
+      setActiveId(loaded[0]?.id ?? null);
+    }
     setHydrated(true);
   }, []);
 
@@ -50,9 +60,12 @@ export default function ChatPage() {
   }
 
   function handleDelete(id: string) {
-    const next = conversations.filter((c) => c.id !== id);
+    const remaining = conversations.filter((c) => c.id !== id);
+    // Never leave the user staring at an empty placeholder after deleting
+    // their last chat — spin up a fresh one, same as first load.
+    const next = remaining.length > 0 ? remaining : [createChatConversation()];
     persist(next);
-    if (activeId === id) setActiveId(next[0]?.id ?? null);
+    if (activeId === id) setActiveId(next[0].id);
   }
 
   function handleMessagesChange(id: string, messages: ChatMessage[]) {

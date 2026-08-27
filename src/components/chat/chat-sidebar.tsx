@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, X } from "lucide-react";
+import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +34,11 @@ export function ChatSidebar({
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editValue, setEditValue] = React.useState("");
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+  const [query, setQuery] = React.useState("");
+
+  const filtered = query.trim()
+    ? conversations.filter((c) => c.title.toLowerCase().includes(query.trim().toLowerCase()))
+    : conversations;
 
   function startEdit(c: ChatConversation) {
     setEditingId(c.id);
@@ -57,13 +62,28 @@ export function ChatSidebar({
         <Plus className="h-4 w-4" /> New chat
       </Button>
 
+      {conversations.length > 6 && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-faint" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search chats…"
+            aria-label="Search chats"
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+      )}
+
       <nav className="flex-1 space-y-0.5 overflow-y-auto" aria-label="Chat history">
         {conversations.length === 0 ? (
           <p className="px-2 py-4 text-center text-xs text-text-faint">
             No conversations yet — start one above.
           </p>
+        ) : filtered.length === 0 ? (
+          <p className="px-2 py-4 text-center text-xs text-text-faint">No chats match &ldquo;{query}&rdquo;.</p>
         ) : (
-          conversations.map((c) => {
+          filtered.map((c) => {
             const active = c.id === activeId;
             const editing = editingId === c.id;
             return (
