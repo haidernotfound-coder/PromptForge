@@ -49,9 +49,9 @@ export default async function StudyForgeOverviewPage() {
     })),
     {
       id: "chat",
-      label: "AI Study Chat",
+      label: "AI Chat",
       description: "A free-form chat for anything study-related.",
-      href: "/studyforge/chat",
+      href: "/chat",
       icon: MessagesSquare,
       accent: "rose",
       badge: "New",

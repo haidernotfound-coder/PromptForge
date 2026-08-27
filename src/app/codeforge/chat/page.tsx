@@ -1,7 +1,13 @@
-import { CodeForgeChatPanel } from "@/components/codeforge/chat-panel";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "AI Coding Chat" };
-
+/**
+ * The standalone CodeForge AI Coding Chat panel has been retired in favor
+ * of the unified AI Chat (`/chat`), which now automatically detects
+ * coding questions and delegates to this exact same CodeForge chat
+ * endpoint/key pool (see `src/lib/server/chat-intent.ts` and
+ * `src/app/api/chat/route.ts`). This route is kept only so old
+ * bookmarks/links land somewhere useful instead of 404ing.
+ */
 export default function CodeForgeChatPage() {
-  return <CodeForgeChatPanel />;
+  redirect("/chat");
 }

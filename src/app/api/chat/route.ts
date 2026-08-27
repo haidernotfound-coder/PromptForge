@@ -6,24 +6,45 @@ import { getAppSessionOrNull } from "@/lib/session";
 import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
 import { extractDocuments } from "@/lib/server/attachment-extract";
 import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
+import { detectChatIntent } from "@/lib/server/chat-intent";
 
 /**
- * Unified AI Chat provider wiring (Phase 1 of the ChatGPT-style refactor).
+ * Unified AI Chat provider wiring.
  *
- * Deliberately NOT a new provider/fallback system: this is Forge AI's own
- * route (`src/app/api/forge-ai/route.ts`) with the `<current_prompt>`
- * framing swapped for a general-purpose system prompt, so the sidebar chat
- * can talk about anything instead of only "the prompt currently open in
- * the editor". It authenticates with the exact same `FORGE_AI_GROQ_API_KEY_*`
- * pool (`getForgeAiApiKeys`) and the same shared Gemini attachment pool —
- * no new environment variables, no duplicate fallback logic. Gated behind
- * the existing `forgeAiEnabled` admin toggle for the same reason.
+ * Phase 1 made this Forge AI's own route (src/app/api/forge-ai/route.ts)
+ * with the <current_prompt> framing swapped for a general-purpose system
+ * prompt, so the sidebar chat can talk about anything instead of only "the
+ * prompt currently open in the editor". It authenticates with the exact
+ * same FORGE_AI_GROQ_API_KEY_* pool (getForgeAiApiKeys) and the same
+ * shared Gemini attachment pool -- no new environment variables, no
+ * duplicate fallback logic. Gated behind the existing forgeAiEnabled admin
+ * toggle for the same reason. This general path is still exactly what runs
+ * for plain conversation and for any turn carrying attachments.
  *
- * Phase 2 will teach this route (or a thin layer in front of it) to detect
- * "make me a PPT" / "write some code" / "quiz me" style requests and
- * delegate to the existing PPTForge/CodeForge/StudyForge modules instead
- * of answering directly — this route intentionally does not attempt any
- * of that routing yet.
+ * Phase 2 (Combine All Forge Capabilities) layers lightweight intent
+ * detection on top of that (see lib/server/chat-intent.ts): a text-only
+ * message that looks like a coding question, a study/quiz request, a
+ * "make me a slide deck" request, or an "improve/rewrite/critique this
+ * prompt" request is delegated to CodeForge / StudyForge / PPTForge /
+ * PromptForge respectively -- by calling that Forge's own existing route
+ * (a same-origin, same-server fetch to /api/codeforge, /api/studyforge,
+ * /api/pptforge, or /api/ai) instead of re-implementing any of its
+ * prompts, models, key pools, or retry logic. Each Forge route still
+ * authenticates with its own existing key pool (CODEFORGE_GROQ_API_KEY_*,
+ * STUDYFORGE_GROQ_API_KEY_*, PPTFORGE_GROQ_API_KEY_*, GROQ_API_KEY_*) and
+ * still records its own admin events/usage exactly as it does when hit
+ * directly -- no new environment variables, no duplicated fallback code.
+ * If a Forge is unconfigured, disabled, or its keys are exhausted,
+ * delegation quietly falls through to the normal general-purpose reply
+ * below instead of surfacing that Forge's error -- a wrong intent guess
+ * should never break the chat.
+ *
+ * PPTForge delegation is the one special case: PPTForge's route streams
+ * back real .pptx bytes, not JSON. Phase 4 ("Files + Web Search") owns
+ * turning generated files into proper in-chat file cards, so until then
+ * this route base64-encodes the bytes into a data: link inline in the
+ * markdown reply -- a real, downloadable file today, just not the
+ * polished file-card UI Phase 4 will add.
  */
 
 export const runtime = "nodejs";
@@ -97,6 +118,81 @@ async function callGroq(
   return { ok: true, output };
 }
 
+/**
+ * Calls the appropriate Forge's own route in-process via a same-origin
+ * fetch, matching the exact request contract that route already expects,
+ * and returns the plain text/markdown to show in the unified chat -- or
+ * null if this intent is not a delegate case, the delegate is not
+ * configured/enabled, or the call otherwise failed, in which case the
+ * caller falls back to the normal general-purpose reply.
+ */
+async function tryDelegateToForge(
+  intent: ReturnType<typeof detectChatIntent>,
+  ctx: {
+    origin: string;
+    cookie: string;
+    cleanMessages: UnifiedChatMessage[];
+    images: string[];
+    documents: AttachmentRequestBody["documents"];
+    contextBlocks: string[];
+  }
+): Promise<string | null> {
+  const call = (path: string, payload: unknown) =>
+    fetch(`${ctx.origin}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ctx.cookie },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+  try {
+    if (intent.kind === "code" || intent.kind === "study") {
+      const path = intent.kind === "code" ? "/api/codeforge" : "/api/studyforge";
+      const res = await call(path, {
+        mode: "chat",
+        messages: ctx.cleanMessages,
+        images: ctx.images,
+        documents: ctx.documents,
+        contextBlocks: ctx.contextBlocks,
+      });
+      if (!res.ok) return null; // disabled/not configured/failed — fall back to a normal reply.
+      const data = (await res.json()) as { output?: string };
+      return typeof data.output === "string" && data.output.trim() ? data.output : null;
+    }
+
+    if (intent.kind === "promptforge") {
+      const res = await call("/api/ai", { action: intent.action, input: intent.input });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { output?: string };
+      if (typeof data.output !== "string" || !data.output.trim()) return null;
+      if (intent.action === "critique") {
+        return `Here's the PromptForge critique:\n\n\`\`\`json\n${data.output.trim()}\n\`\`\``;
+      }
+      return `Here's the ${intent.action}d prompt (via PromptForge):\n\n${data.output.trim()}`;
+    }
+
+    if (intent.kind === "ppt") {
+      const res = await call("/api/pptforge", { topic: intent.topic, slideCount: 8, style: "professional" });
+      if (!res.ok) return null; // PPTForge disabled/not configured/failed — fall back to a normal reply.
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("presentation")) return null; // defensive: not actually a pptx
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch?.[1] ?? "presentation.pptx";
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const base64 = buffer.toString("base64");
+      const dataUrl = `data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,${base64}`;
+      const sizeKb = (buffer.length / 1024).toFixed(0);
+      return `I put together a slide deck for you on **${intent.topic}** using PPTForge — [Download ${filename}](${dataUrl}) (${sizeKb} KB). Open [PPTForge](/pptforge) directly if you want to tweak the style or slide count.\n\n_(Phase 4 will upgrade this into a proper in-chat file card.)_`;
+    }
+
+    return null;
+  } catch (err) {
+    console.error("Unified AI Chat delegate call failed", err);
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   if (!isForgeAiConfigured()) {
     return NextResponse.json({ error: "AI Chat provider not configured" }, { status: 501 });
@@ -142,6 +238,33 @@ export async function POST(request: Request) {
   const documents = body.documents ?? [];
   const hasAttachments = images.length > 0 || documents.length > 0;
   const session = await getAppSessionOrNull();
+
+  // --- Phase 2: intent routing to the existing Forge modules -------------
+  // Attachment turns skip delegation and go straight to the Gemini path
+  // below unchanged — attachment-aware delegation is Phase 3/4 territory.
+  if (!hasAttachments) {
+    const lastUserMessage = [...cleanMessages].reverse().find((m) => m.role === "user");
+    const intent = lastUserMessage ? detectChatIntent(lastUserMessage.content) : { kind: "normal" as const };
+
+    const delegated = await tryDelegateToForge(intent, {
+      origin: new URL(request.url).origin,
+      cookie: request.headers.get("cookie") ?? "",
+      cleanMessages,
+      images,
+      documents,
+      contextBlocks: body.contextBlocks ?? [],
+    });
+    if (delegated) {
+      await recordEvent({
+        userLabel: session?.email,
+        eventType: "forge_ai.chat",
+        success: true,
+        metadata: { surface: "unified_chat", delegatedTo: intent.kind },
+      });
+      return NextResponse.json({ output: delegated });
+    }
+  }
+  // -------------------------------------------------------------------------
 
   // Same reasoning as Forge AI: any turn carrying an image/document routes to
   // Gemini (native file understanding) instead of flattened Groq-vision text.

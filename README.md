@@ -481,7 +481,7 @@ unchanged as the working checklist.
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Unified AI Chat (interface) | ✅ Complete |
-| 2 | Combine All Forge Capabilities | ⬜ Not started |
+| 2 | Combine All Forge Capabilities | ✅ Complete |
 | 3 | Attachment Memory | ⬜ Not started |
 | 4 | Files + Web Search | ⬜ Not started |
 | 5 | Final UI/UX + Testing | ⬜ Not started |
@@ -531,12 +531,52 @@ unchanged as the working checklist.
   environment — network access allowed a real `npm install` + `npm run
   build`, unlike some earlier phases).
 
-**Next phase (Phase 2 — Combine All Forge Capabilities):** teach `/api/chat`
-(or a thin layer in front of it) to detect intent — "write some code",
-"quiz me on X", "make a slide deck about Y", "search the web for Z" — and
-delegate to the existing CodeForge/StudyForge/PPTForge modules and web
-search instead of answering everything directly out of one general system
-prompt, without duplicating any of those modules' implementations.
+### Phase 2 — Combine All Forge Capabilities (this build) ✅
+
+- **Intent detection** — `src/lib/server/chat-intent.ts` looks at the
+  newest user message with a handful of cheap regexes (no extra model call
+  spent classifying) and returns one of `code` / `study` / `ppt` /
+  `promptforge` / `normal`. A fenced code block counts as a strong `code`
+  signal on its own. This is deliberately conservative: it only ever
+  *suggests* a delegate, never blocks a reply.
+- **Delegation, not duplication** — `src/app/api/chat/route.ts` now calls
+  `tryDelegateToForge()` before falling back to its own general-purpose
+  reply. That function makes a normal same-origin `fetch()` to the Forge's
+  *own* existing route — `/api/codeforge` (`mode: "chat"`), `/api/studyforge`
+  (`mode: "chat"`), `/api/ai` (improve/rewrite/expand/shorten/critique), or
+  `/api/pptforge` — forwarding the session cookie so each keeps using its
+  own key pool, its own admin enable/disable flag, and its own
+  event/usage tracking exactly as if the user had used that product
+  directly. Nothing about those routes changed and no new environment
+  variables were added.
+  - Cross-importing those route handler modules directly (instead of
+    `fetch`) was tried first and reverted: Next.js bundles every
+    `app/api/.../route.ts` as its own isolated server entry, and importing
+    one from another breaks that bundling at build time. A same-origin
+    `fetch` avoids that while still hitting the exact same code path.
+- **"Write some code" / "quiz me on X"** → routed to CodeForge's / StudyForge's
+  existing multi-turn chat mode, attachments (images/documents) included,
+  so their Gemini-attachment-first, Groq-fallback behavior is reused as-is.
+- **"Improve/rewrite/expand/shorten/critique this prompt"** → routed to the
+  existing `/api/ai` route with the extracted action + prompt text.
+- **"Make me a slide deck about X"** → routed to the real `/api/pptforge`
+  route, which still generates a real `.pptx` (structured plan → PptxGenJS)
+  exactly as it does on the PPTForge page. The unified chat receives that
+  file back and links it inline as a downloadable `data:` URI (e.g. **[deck
+  title.pptx](...)**) — a real, working download today, ahead of Phase 4's
+  planned proper file-card UI, since generation was already delegating a
+  real binary anyway.
+- **Always-safe fallback** — if a delegate is unconfigured, disabled
+  (admin toggle), rate-limited, or errors for any reason, `/api/chat` falls
+  straight through to its own Phase 1 general-purpose reply. A wrong or
+  unavailable intent guess never surfaces as a chat failure.
+- `npm run build` passes cleanly with this change.
+
+**Next phase (Phase 3 — Attachment Memory):** fix the provider-switching
+memory problem — persist attachment references/extracted content/summaries
+in the existing chat/history store so a later message ("now make a PPT from
+that PDF") keeps working even when it routes to a different provider/Forge
+than the message before it.
 
 ---
 

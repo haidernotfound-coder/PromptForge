@@ -26,8 +26,8 @@ export default async function StudyForgeLayout({ children }: { children: React.R
         <StudyForgeBrand />
         <StudyForgeSidebarNav isAdmin={admin.isAdmin} />
         <Button asChild size="sm" className="gap-1.5">
-          <Link href="/studyforge/chat">
-            <MessagesSquare className="h-4 w-4" /> AI Study Chat
+          <Link href="/chat">
+            <MessagesSquare className="h-4 w-4" /> AI Chat
           </Link>
         </Button>
       </aside>

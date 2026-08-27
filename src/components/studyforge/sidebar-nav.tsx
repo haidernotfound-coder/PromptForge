@@ -29,7 +29,7 @@ const LINKS = [
   { href: "/studyforge/planner", label: "Study Planner", icon: CalendarClock },
   { href: "/studyforge/summarize", label: "Notes Summarizer", icon: FileText },
   { href: "/studyforge/exam", label: "Exam Practice", icon: ScrollText },
-  { href: "/studyforge/chat", label: "AI Study Chat", icon: MessagesSquare },
+  { href: "/chat", label: "AI Chat", icon: MessagesSquare },
   { href: "/studyforge/settings", label: "Settings", icon: Settings },
 ];
 

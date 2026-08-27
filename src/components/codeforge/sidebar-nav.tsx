@@ -28,7 +28,7 @@ const LINKS = [
   { href: "/codeforge/tests", label: "Generate Unit Tests", icon: FlaskConical },
   { href: "/codeforge/docs", label: "Generate Documentation", icon: FileText },
   { href: "/codeforge/review", label: "Review Code", icon: ClipboardCheck },
-  { href: "/codeforge/chat", label: "AI Coding Chat", icon: MessagesSquare },
+  { href: "/chat", label: "AI Chat", icon: MessagesSquare },
   { href: "/codeforge/settings", label: "Settings", icon: Settings },
 ];
 

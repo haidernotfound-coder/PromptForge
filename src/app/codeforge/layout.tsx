@@ -26,8 +26,8 @@ export default async function CodeForgeLayout({ children }: { children: React.Re
         <CodeForgeBrand />
         <CodeForgeSidebarNav isAdmin={admin.isAdmin} />
         <Button asChild size="sm" className="gap-1.5">
-          <Link href="/codeforge/chat">
-            <MessagesSquare className="h-4 w-4" /> AI Coding Chat
+          <Link href="/chat">
+            <MessagesSquare className="h-4 w-4" /> AI Chat
           </Link>
         </Button>
       </aside>

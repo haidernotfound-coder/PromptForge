@@ -49,9 +49,9 @@ export default async function CodeForgeOverviewPage() {
     })),
     {
       id: "chat",
-      label: "AI Coding Chat",
+      label: "AI Chat",
       description: "A free-form chat for anything code-related.",
-      href: "/codeforge/chat",
+      href: "/chat",
       icon: MessagesSquare,
       accent: "rose",
       badge: "New",
