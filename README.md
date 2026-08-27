@@ -983,8 +983,11 @@ but actual audio-to-audio streaming over the Gemini Live API
   `speaking` / `error`) plus live transcript turns (via Gemini's built-in
   input/output audio transcription).
 - **`src/components/chat/voice-panel.tsx`** — the voice UI: an animated
-  orb (different motion per state), a live transcript, and a single
-  call/hang-up button. Uses the app's existing design tokens
+  orb (different motion per state), a live transcript, a mute toggle, a
+  camera toggle (replaces the orb with a live local preview once on,
+  matching how ChatGPT/Gemini's own voice+video UI puts video front and
+  center), a front/back camera switch button (mobile devices with both),
+  and a single call/hang-up button. Uses the app's existing design tokens
   (`bg-gradient-accent`, `shadow-glow`, etc.) so it matches the rest of
   NexPrompt rather than looking bolted on.
 - **`src/components/chat/chat-app.tsx`** — adds the Chats/Voice tab
@@ -1018,8 +1021,17 @@ but actual audio-to-audio streaming over the Gemini Live API
 4. Speak — you should hear Gemini respond within about a second. Talk
    over it while it's speaking to confirm interruption/barge-in works (it
    should stop immediately and start listening again).
-5. Click the red hang-up button to end the call and release the
-   microphone.
+5. Tap the mic icon next to the call button to mute/unmute — Gemini stops
+   hearing you while muted, but the connection stays open (no re-prompt
+   for mic permission when you unmute).
+6. Tap the camera icon to turn video on. Allow camera access when
+   prompted — you'll see your own camera preview, and Gemini receives a
+   still frame roughly once a second, so you can show it something (a
+   document, an object, your surroundings) and ask about it. On a device
+   with more than one camera, a switch-camera button appears next to it
+   to flip between front/selfie and back cameras.
+7. Click the red hang-up button to end the call and release the
+   microphone and camera.
 
 If `GEMINI_VOICE_API_KEY` isn't set, the Voice tab still renders but shows
 "Voice Mode isn't configured yet" instead of erroring — the rest of the
@@ -1032,7 +1044,9 @@ app (including the existing text chat) is completely unaffected.
 - `src/lib/admin/groq-router-state.ts` — added
   `getLastGoodGeminiVoiceKeyIndex` / `setLastGoodGeminiVoiceKeyIndex`.
 - `src/app/api/voice-token/route.ts` — **new**. Ephemeral token minting.
-- `src/lib/use-voice-session.ts` — **new**. Client session/audio hook.
-- `src/components/chat/voice-panel.tsx` — **new**. Voice UI.
+- `src/lib/use-voice-session.ts` — **new**. Client session/audio/video hook
+  (mute toggle, camera capture at ~1fps, front/back camera switching).
+- `src/components/chat/voice-panel.tsx` — **new**. Voice UI (orb, camera
+  preview, mute/camera/switch-camera/hang-up controls).
 - `src/components/chat/chat-app.tsx` — added the Chats/Voice tab switcher.
 - `.env.example` — documented `GEMINI_VOICE_API_KEY_1`..`_7`.

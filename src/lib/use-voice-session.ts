@@ -6,12 +6,15 @@ import { GoogleGenAI, Modality, type Session, type LiveServerMessage } from "@go
 /**
  * Voice Mode session hook.
  *
- * Owns the whole real-time audio lifecycle: requesting an ephemeral token
- * from our server (never a permanent key), opening a direct
- * browser-to-Gemini WebSocket session via the Live API, capturing the
- * microphone and streaming it as 16-bit PCM @ 16kHz, and playing back the
+ * Owns the whole real-time audio (+ optional video) lifecycle: requesting
+ * an ephemeral token from our server (never a permanent key), opening a
+ * direct browser-to-Gemini WebSocket session via the Live API, capturing
+ * the microphone and streaming it as 16-bit PCM @ 16kHz, playing back the
  * model's 24kHz PCM audio with sample-accurate scheduling that can be
- * cleared instantly on a barge-in interruption.
+ * cleared instantly on a barge-in interruption, and -- when the camera is
+ * turned on -- sampling video frames as JPEG stills at ~1fps (the Live
+ * API's documented cap for video input) so Gemini can see and react to
+ * whatever the camera is pointed at.
  *
  * State machine: idle -> connecting -> listening <-> thinking <-> speaking,
  * with "listening" being the resting state while connected (mic open,
@@ -19,9 +22,15 @@ import { GoogleGenAI, Modality, type Session, type LiveServerMessage } from "@go
  * end-of-user-speech and the first audio chunk coming back (the API itself
  * has no explicit "thinking" signal -- it's inferred client-side from the
  * transcription/turn events below).
+ *
+ * Mute and camera are both independent of the underlying session: muting
+ * stops audio chunks from being sent (the mic track itself stays open, so
+ * unmuting is instant with no re-prompt) and the camera can be toggled on
+ * or off, or switched between front/back, at any point during a live call.
  */
 
 export type VoiceState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "error";
+export type CameraFacing = "user" | "environment";
 
 export interface VoiceTurn {
   id: string;
@@ -36,8 +45,19 @@ export interface UseVoiceSessionResult {
   turns: VoiceTurn[];
   /** True once the browser has granted mic access for this session. */
   micGranted: boolean;
+  /** True while the mic is muted (no audio sent to Gemini). */
+  muted: boolean;
+  /** True while the camera is on and streaming frames to Gemini. */
+  cameraOn: boolean;
+  /** Which physical camera is active when cameraOn is true. */
+  cameraFacing: CameraFacing;
+  /** Attach to a <video> element to show the local camera preview. */
+  videoRef: React.RefObject<HTMLVideoElement>;
   start: () => Promise<void>;
   stop: () => void;
+  toggleMute: () => void;
+  toggleCamera: () => Promise<void>;
+  switchCamera: () => Promise<void>;
 }
 
 const INPUT_SAMPLE_RATE = 16000;
@@ -47,6 +67,11 @@ const OUTPUT_SAMPLE_RATE = 24000;
 // that's a 20-40ms-scale chunk once resampled, in the range Gemini's docs
 // recommend for realtime streaming.
 const PROCESSOR_BUFFER_SIZE = 4096;
+// The Live API documents video input as capped at roughly 1 frame/sec --
+// sending faster wastes bandwidth without adding anything the model uses.
+const VIDEO_FRAME_INTERVAL_MS = 1000;
+const VIDEO_MAX_DIMENSION = 768;
+const VIDEO_JPEG_QUALITY = 0.7;
 
 function floatTo16BitPCM(float32: Float32Array): Int16Array {
   const out = new Int16Array(float32.length);
@@ -104,12 +129,16 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const [error, setError] = React.useState<string | null>(null);
   const [turns, setTurns] = React.useState<VoiceTurn[]>([]);
   const [micGranted, setMicGranted] = React.useState(false);
+  const [muted, setMuted] = React.useState(false);
+  const [cameraOn, setCameraOn] = React.useState(false);
+  const [cameraFacing, setCameraFacing] = React.useState<CameraFacing>("user");
 
   const sessionRef = React.useRef<Session | null>(null);
   const micStreamRef = React.useRef<MediaStream | null>(null);
   const inputAudioCtxRef = React.useRef<AudioContext | null>(null);
   const processorRef = React.useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = React.useRef<MediaStreamAudioSourceNode | null>(null);
+  const mutedRef = React.useRef(false);
 
   const outputAudioCtxRef = React.useRef<AudioContext | null>(null);
   // Scheduling cursor (in AudioContext time) for gapless sequential
@@ -117,9 +146,26 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const playCursorRef = React.useRef(0);
   const scheduledSourcesRef = React.useRef<Set<AudioBufferSourceNode>>(new Set());
 
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = React.useRef<MediaStream | null>(null);
+  const videoCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const videoIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraFacingRef = React.useRef<CameraFacing>("user");
+
   const currentModelTurnIdRef = React.useRef<string | null>(null);
   const currentUserTurnIdRef = React.useRef<string | null>(null);
   const stoppedRef = React.useRef(false);
+
+  const stopVideoCapture = React.useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOn(false);
+  }, []);
 
   const cleanupAudioIO = React.useCallback(() => {
     processorRef.current?.disconnect();
@@ -146,7 +192,9 @@ export function useVoiceSession(): UseVoiceSessionResult {
     }
     outputAudioCtxRef.current = null;
     playCursorRef.current = 0;
-  }, []);
+
+    stopVideoCapture();
+  }, [stopVideoCapture]);
 
   const stop = React.useCallback(() => {
     stoppedRef.current = true;
@@ -154,9 +202,102 @@ export function useVoiceSession(): UseVoiceSessionResult {
     sessionRef.current = null;
     cleanupAudioIO();
     setState("idle");
+    setMuted(false);
+    mutedRef.current = false;
     currentModelTurnIdRef.current = null;
     currentUserTurnIdRef.current = null;
   }, [cleanupAudioIO]);
+
+  const toggleMute = React.useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      mutedRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // Grabs one frame from the live <video> preview, downscales it onto a
+  // hidden canvas, and JPEG-encodes it for sendRealtimeInput. Runs on an
+  // interval while the camera is on -- capped at ~1fps per the Live API's
+  // documented video input guidance.
+  const captureAndSendFrame = React.useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || !sessionRef.current) return;
+
+    let canvas = videoCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      videoCanvasRef.current = canvas;
+    }
+    const scale = Math.min(1, VIDEO_MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
+    const width = Math.max(1, Math.round(video.videoWidth * scale));
+    const height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", VIDEO_JPEG_QUALITY);
+    const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+
+    try {
+      sessionRef.current.sendRealtimeInput({
+        video: { data: base64, mimeType: "image/jpeg" },
+      });
+    } catch {
+      // Session may have just closed -- drop this frame.
+    }
+  }, []);
+
+  const openCamera = React.useCallback(async (facing: CameraFacing) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    if (stoppedRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = stream;
+    cameraFacingRef.current = facing;
+    setCameraFacing(facing);
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const toggleCamera = React.useCallback(async () => {
+    if (cameraOn) {
+      stopVideoCapture();
+      return;
+    }
+    try {
+      await openCamera(cameraFacingRef.current);
+      setCameraOn(true);
+      videoIntervalRef.current = setInterval(captureAndSendFrame, VIDEO_FRAME_INTERVAL_MS);
+    } catch (err) {
+      console.error("Camera start failed", err);
+      const message =
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Camera access was denied. Allow camera access to use video."
+          : "Couldn't start the camera.";
+      setError(message);
+    }
+  }, [cameraOn, openCamera, stopVideoCapture, captureAndSendFrame]);
+
+  const switchCamera = React.useCallback(async () => {
+    if (!cameraOn) return;
+    const next: CameraFacing = cameraFacingRef.current === "user" ? "environment" : "user";
+    try {
+      await openCamera(next);
+    } catch (err) {
+      console.error("Camera switch failed", err);
+      // Some devices only expose one camera -- keep the existing stream
+      // running rather than leaving the user with no video at all.
+    }
+  }, [cameraOn, openCamera]);
 
   // Stop any queued playback immediately -- used both for barge-in
   // (interrupted signal) and for cleanup.
@@ -282,6 +423,8 @@ export function useVoiceSession(): UseVoiceSessionResult {
     stoppedRef.current = false;
     setError(null);
     setTurns([]);
+    setMuted(false);
+    mutedRef.current = false;
     setState("connecting");
 
     try {
@@ -348,7 +491,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
       processorRef.current = processor;
 
       processor.onaudioprocess = (event) => {
-        if (stoppedRef.current || !sessionRef.current) return;
+        if (stoppedRef.current || !sessionRef.current || mutedRef.current) return;
         const input = event.inputBuffer.getChannelData(0);
         const resampled = downsampleTo16k(input, inputCtx.sampleRate);
         const pcm16 = floatTo16BitPCM(resampled);
@@ -397,5 +540,19 @@ export function useVoiceSession(): UseVoiceSessionResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, error, turns, micGranted, start, stop };
+  return {
+    state,
+    error,
+    turns,
+    micGranted,
+    muted,
+    cameraOn,
+    cameraFacing,
+    videoRef,
+    start,
+    stop,
+    toggleMute,
+    toggleCamera,
+    switchCamera,
+  };
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2 } from "lucide-react";
+import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useVoiceSession, type VoiceState } from "@/lib/use-voice-session";
 
@@ -17,7 +17,9 @@ const STATE_LABEL: Record<VoiceState, string> = {
 
 /** The animated orb -- ChatGPT-voice-style pulsing core, with distinct
  *  motion per state (idle breathing, listening ripple, speaking pulse
- *  tied loosely to a faux-amplitude beat via CSS animation timing). */
+ *  tied loosely to a faux-amplitude beat via CSS animation timing).
+ *  Hidden once the camera is on, since the video preview takes its place
+ *  as the visual focus (same idea as ChatGPT/Gemini's own voice+video UI). */
 function VoiceOrb({ state }: { state: VoiceState }) {
   const active = state === "listening" || state === "speaking" || state === "thinking";
 
@@ -87,8 +89,58 @@ function VoiceOrb({ state }: { state: VoiceState }) {
   );
 }
 
+/** Small round icon button used for the secondary controls (mute, camera,
+ *  switch camera) that sit alongside the main call/hang-up button. */
+function ControlButton({
+  active,
+  danger,
+  disabled,
+  label,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ease-smooth active:scale-95 disabled:opacity-40",
+        danger
+          ? "border-transparent bg-danger text-white hover:bg-danger/90"
+          : active
+            ? "border-transparent bg-surface-raised text-text shadow-soft"
+            : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function VoicePanel({ configured }: { configured: boolean | null }) {
-  const { state, error, turns, start, stop } = useVoiceSession();
+  const {
+    state,
+    error,
+    turns,
+    muted,
+    cameraOn,
+    videoRef,
+    start,
+    stop,
+    toggleMute,
+    toggleCamera,
+    switchCamera,
+  } = useVoiceSession();
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -126,7 +178,8 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
           {turns.length === 0 && !live && (
             <p className="pt-10 text-center text-sm text-text-faint">
               Start a conversation and speak naturally — Gemini will respond in real time and you can
-              interrupt it any time by just talking.
+              interrupt it any time by just talking. Turn on your camera to show it what you&apos;re
+              looking at.
             </p>
           )}
           {turns.map((turn) => (
@@ -147,7 +200,32 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
       </div>
 
       <div className="flex w-full shrink-0 flex-col items-center gap-5 border-t border-border px-6 py-8 sm:py-10">
-        <VoiceOrb state={state} />
+        {/* Camera preview replaces the orb as the visual focus while
+            video is on; the orb (with its state animation) still shows
+            when the camera is off. The <video> element itself is always
+            mounted (just visually hidden) so the hook's videoRef and the
+            frame-capture canvas always have a live element to read from
+            the instant the camera is toggled on. */}
+        <div className={cn("relative", !cameraOn && "h-48 w-48 sm:h-56 sm:w-56")}>
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            className={cn(
+              "aspect-[3/4] w-56 rounded-2xl bg-black object-cover shadow-soft sm:w-64",
+              !cameraOn && "hidden"
+            )}
+          />
+          {!cameraOn && <VoiceOrb state={state} />}
+          {cameraOn && (
+            <span
+              className={cn(
+                "absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full",
+                state === "speaking" ? "animate-pulse bg-accent" : "bg-accent/50"
+              )}
+            />
+          )}
+        </div>
 
         <div className="flex flex-col items-center gap-1">
           <p className="text-sm font-medium text-text">{error ? error : STATE_LABEL[state]}</p>
@@ -156,7 +234,17 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          {live && (
+            <ControlButton
+              label={muted ? "Unmute microphone" : "Mute microphone"}
+              onClick={toggleMute}
+              active={!muted}
+            >
+              {muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </ControlButton>
+          )}
+
           <button
             type="button"
             onClick={handleToggle}
@@ -175,6 +263,22 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
               <Mic className="h-6 w-6" />
             )}
           </button>
+
+          {live && (
+            <ControlButton
+              label={cameraOn ? "Turn camera off" : "Turn camera on"}
+              onClick={() => toggleCamera()}
+              active={cameraOn}
+            >
+              {cameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            </ControlButton>
+          )}
+
+          {live && cameraOn && (
+            <ControlButton label="Switch camera" onClick={() => switchCamera()}>
+              <SwitchCamera className="h-5 w-5" />
+            </ControlButton>
+          )}
         </div>
 
         {state === "error" && (
