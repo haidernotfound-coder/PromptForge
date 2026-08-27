@@ -279,10 +279,22 @@ export function useVoiceSession(): UseVoiceSessionResult {
       videoIntervalRef.current = setInterval(captureAndSendFrame, VIDEO_FRAME_INTERVAL_MS);
     } catch (err) {
       console.error("Camera start failed", err);
-      const message =
-        err instanceof DOMException && err.name === "NotAllowedError"
-          ? "Camera access was denied. Allow camera access to use video."
-          : "Couldn't start the camera.";
+      let message = "Couldn't start the camera.";
+      if (err instanceof DOMException) {
+        if (err.name === "NotAllowedError") {
+          message = "Camera access was denied. Allow camera access in your browser's site settings and try again.";
+        } else if (err.name === "NotFoundError" || err.name === "OverconstrainedError") {
+          message = "No camera was found on this device.";
+        } else if (err.name === "NotReadableError") {
+          message = "The camera is already in use by another app.";
+        } else if (err.name === "SecurityError") {
+          // Thrown when the Permissions-Policy header (or an iframe's
+          // `allow` attribute) blocks the Camera API outright -- the
+          // browser never even shows a permission prompt in this case,
+          // so "denied" would be misleading here.
+          message = "Camera access is blocked for this site (security policy). Contact the site admin.";
+        }
+      }
       setError(message);
     }
   }, [cameraOn, openCamera, stopVideoCapture, captureAndSendFrame]);
