@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon, ArrowDown } from "lucide-react";
+import { UploadCloud, Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,11 @@ export function ChatPanel({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
+  const [isDraggingFile, setIsDraggingFile] = React.useState(false);
+  // Counts nested dragenter/dragleave pairs across child elements so the
+  // drop overlay doesn't flicker off when the cursor crosses from the
+  // outer container onto a message bubble or the composer underneath it.
+  const dragCounter = React.useRef(0);
   const messages = conversation.messages;
 
   React.useEffect(() => {
@@ -144,8 +149,56 @@ export function ChatPanel({
     );
   }
 
+  // Only meaningful while a drag carries actual files (not, say, dragging
+  // selected message text around the page) — checking dataTransfer.types
+  // lets the overlay stay hidden for ordinary text-selection drags.
+  function isFileDrag(e: React.DragEvent) {
+    return Array.from(e.dataTransfer.types).includes("Files");
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    if (!isFileDrag(e) || sending) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    setIsDraggingFile(true);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!isFileDrag(e) || sending) return;
+    e.preventDefault();
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setIsDraggingFile(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDraggingFile(false);
+    if (sending) return;
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) void attachmentState.addFiles(files);
+  }
+
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] flex-col">
+    <div
+      className="relative flex h-[calc(100vh-8.5rem)] flex-col"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-accent bg-surface/90 backdrop-blur-sm">
+          <UploadCloud className="h-8 w-8 text-accent" />
+          <p className="text-sm font-medium text-text">Drop files to attach them</p>
+          <p className="text-xs text-text-faint">Images, PDF, DOCX, ZIP, TXT, CSV, code — up to 100 MB each</p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
         <div>
           <div className="flex items-center gap-2">

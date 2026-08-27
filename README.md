@@ -784,7 +784,15 @@ Two issues reported after Phase 3 shipped:
   an icon-only button below the `sm` breakpoint (label still present for
   screen readers via the button's icon + surrounding context) so the
   attach/voice/textarea/send row doesn't get cramped on phone widths.
-- **Settings/profile access** — already handled at the layout level: the
+- **Drag-and-drop attachments** — the whole chat panel (message list and
+  composer alike) is now a drop target: dragging any file over it shows a
+  dashed-border overlay ("Drop files to attach them"), and dropping runs
+  the files through the exact same `useAttachments().addFiles()` path the
+  paperclip button already used — same validation, size limits, and
+  reading/thumbnail behavior, just a second way in. Ignores drags that
+  aren't carrying files (e.g. dragging selected message text) and is
+  disabled while a reply is in flight, matching the paperclip button's
+  own disabled state.
   global `Navbar` (rendered above every route including `/chat` from
   `src/app/layout.tsx`) carries the account menu (profile, settings, sign
   out) and is unaffected by anything in this phase, so no duplicate menu
