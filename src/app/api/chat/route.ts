@@ -305,8 +305,13 @@ export async function POST(request: Request) {
   // Attachment turns skip delegation and go straight to the Gemini path
   // below unchanged — attachment-aware delegation is Phase 3/4 territory.
   if (!hasAttachments) {
-    const lastUserMessage = [...windowedMessages].reverse().find((m) => m.role === "user");
-    const intent = lastUserMessage ? detectChatIntent(lastUserMessage.content) : { kind: "normal" as const };
+    const reversedUserMessages = [...windowedMessages].reverse().filter((m) => m.role === "user");
+    const lastUserMessage = reversedUserMessages[0];
+    // Second-most-recent user message — used as a topic fallback when the
+    // latest message is a bare "send me .pptx file"/"make me a ppt" with
+    // no topic of its own (see detectChatIntent's ppt branch).
+    const priorUserMessage = reversedUserMessages[1]?.content;
+    const intent = lastUserMessage ? detectChatIntent(lastUserMessage.content, priorUserMessage) : { kind: "normal" as const };
 
     // --- Phase 4: "package this as a file" — purely local, no model call.
     // Packages the most recent assistant reply (what "this"/"that" refers
