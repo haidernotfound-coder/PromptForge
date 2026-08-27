@@ -2,13 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu, MessagesSquare, TriangleAlert } from "lucide-react";
+import { Menu, MessagesSquare, TriangleAlert, AudioLines } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { DashboardUserMenu } from "@/components/dashboard/user-menu";
 import * as Dialog from "@radix-ui/react-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { VoicePanel } from "@/components/chat/voice-panel";
 import {
   createChatConversation,
   loadChatConversations,
@@ -66,6 +68,8 @@ export function ChatApp({
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
+  const [voiceConfigured, setVoiceConfigured] = React.useState<boolean | null>(null);
+  const [mode, setMode] = React.useState<"chat" | "voice">("chat");
 
   React.useEffect(() => {
     let cancelled = false;
@@ -76,6 +80,14 @@ export function ChatApp({
       })
       .catch(() => {
         if (!cancelled) setConfigured(false);
+      });
+    fetch("/api/voice-token")
+      .then((res) => (res.ok ? res.json() : { configured: false }))
+      .then((data) => {
+        if (!cancelled) setVoiceConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setVoiceConfigured(false);
       });
     return () => {
       cancelled = true;
@@ -187,20 +199,54 @@ export function ChatApp({
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
-          <span className="truncate text-sm font-medium text-text">{active?.title ?? "AI Chat"}</span>
-          {configured === false && <Badge variant="brass">Demo</Badge>}
-          {configured === true && <Badge variant="success">Live</Badge>}
-          {configured === null && <span className="h-5 w-12" />}
+          <span className="truncate text-sm font-medium text-text">
+            {mode === "voice" ? "Voice Mode" : active?.title ?? "AI Chat"}
+          </span>
+          {mode === "chat" && configured === false && <Badge variant="brass">Demo</Badge>}
+          {mode === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+          {mode === "chat" && configured === null && <span className="h-5 w-12" />}
         </header>
 
-        <header className="hidden shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-2.5 md:flex">
-          <span className="truncate text-sm font-medium text-text-muted">{active?.title ?? "AI Chat"}</span>
-          {configured === false && <Badge variant="brass">Demo mode</Badge>}
-          {configured === true && <Badge variant="success">Live</Badge>}
+        <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2.5 md:flex">
+          <span className="truncate text-sm font-medium text-text-muted">
+            {mode === "voice" ? "Voice Mode" : active?.title ?? "AI Chat"}
+          </span>
+          <div className="flex items-center gap-3">
+            {mode === "chat" && configured === false && <Badge variant="brass">Demo mode</Badge>}
+            {mode === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "chat" | "voice")}>
+              <TabsList>
+                <TabsTrigger value="chat" className="gap-1.5">
+                  <MessagesSquare className="h-3.5 w-3.5" /> Chats
+                </TabsTrigger>
+                <TabsTrigger value="voice" className="gap-1.5">
+                  <AudioLines className="h-3.5 w-3.5" /> Voice
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </header>
+
+        {/* Mobile mode switcher — the desktop header above has room for
+            tabs inline; on mobile it's already tight with the hamburger +
+            title + badge, so the switcher gets its own row. */}
+        <div className="flex shrink-0 items-center justify-center border-b border-border py-2 md:hidden">
+          <Tabs value={mode} onValueChange={(v) => setMode(v as "chat" | "voice")}>
+            <TabsList>
+              <TabsTrigger value="chat" className="gap-1.5">
+                <MessagesSquare className="h-3.5 w-3.5" /> Chats
+              </TabsTrigger>
+              <TabsTrigger value="voice" className="gap-1.5">
+                <AudioLines className="h-3.5 w-3.5" /> Voice
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
         <div className="min-h-0 flex-1">
-          {disabledReason ? (
+          {mode === "voice" ? (
+            <VoicePanel configured={voiceConfigured} />
+          ) : disabledReason ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <TriangleAlert className="h-8 w-8 text-brass" />
               <h2 className="font-display text-lg font-semibold">AI Chat is temporarily unavailable</h2>

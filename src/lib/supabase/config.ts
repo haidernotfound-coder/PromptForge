@@ -248,3 +248,43 @@ export function getGeminiKeyLabels(): string[] {
   }
   return labels;
 }
+
+/**
+ * Voice Mode (Gemini Live API, real-time audio-to-audio) gets its own,
+ * fully independent Gemini key pool — `GEMINI_VOICE_API_KEY_1`..`_7` (and
+ * unsuffixed `GEMINI_VOICE_API_KEY` as key 1, for a single-key setup) —
+ * deliberately separate from `GEMINI_API_KEY_*` above (the attachment/
+ * multimodal text provider). Live API sessions are long-lived WebSocket
+ * connections rather than one-shot requests, so they have very different
+ * quota/concurrency characteristics than attachment turns; sharing a pool
+ * would let a burst of voice sessions starve attachment traffic (or vice
+ * versa). Seven slots, same shape as the CodeForge/Gemini pools. These
+ * keys are only ever used server-side, to mint short-lived ephemeral
+ * tokens (see src/app/api/voice-token/route.ts) — never sent to the
+ * browser directly.
+ */
+export function getGeminiVoiceApiKeys(): string[] {
+  const keys: string[] = [];
+  const first = process.env.GEMINI_VOICE_API_KEY_1 || process.env.GEMINI_VOICE_API_KEY;
+  if (first) keys.push(first);
+  for (let i = 2; i <= 7; i++) {
+    const key = process.env[`GEMINI_VOICE_API_KEY_${i}`];
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export function isVoiceModeConfigured(): boolean {
+  return getGeminiVoiceApiKeys().length > 0;
+}
+
+/** Same purpose as `getGeminiKeyLabels`, for the 7-slot voice pool. */
+export function getGeminiVoiceKeyLabels(): string[] {
+  const labels: string[] = [];
+  if (process.env.GEMINI_VOICE_API_KEY_1) labels.push("GEMINI_VOICE_API_KEY_1");
+  else if (process.env.GEMINI_VOICE_API_KEY) labels.push("GEMINI_VOICE_API_KEY");
+  for (let i = 2; i <= 7; i++) {
+    if (process.env[`GEMINI_VOICE_API_KEY_${i}`]) labels.push(`GEMINI_VOICE_API_KEY_${i}`);
+  }
+  return labels;
+}

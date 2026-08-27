@@ -943,3 +943,96 @@ Polish the unified AI into a simple ChatGPT-style experience:
 Test:
 normal chat, history, attachment memory, attachment follow-ups, voice, web search, code debugging, study help, PPT generation, prompt improvement, file generation, provider fallbacks, authentication, refresh/reopen conversations.
 
+
+## Voice Mode — real-time Gemini Live API voice chat (this build) ✅
+
+Adds a **Voice** tab next to **Chats** in `/chat`'s header (desktop: inline
+tabs; mobile: its own row under the header) for real-time, spoken
+conversations with Gemini — not browser speech-to-text + text model + TTS,
+but actual audio-to-audio streaming over the Gemini Live API
+(`gemini-3.1-flash-live-preview`).
+
+### How it works
+
+- **`src/lib/supabase/config.ts`** — `getGeminiVoiceApiKeys()` /
+  `isVoiceModeConfigured()` / `getGeminiVoiceKeyLabels()`. A brand-new,
+  independent key pool (`GEMINI_VOICE_API_KEY_1`..`_7`, unsuffixed
+  `GEMINI_VOICE_API_KEY` as key 1) — separate from `GEMINI_API_KEY_*`
+  (the existing attachment/multimodal provider), since Live API sessions
+  are long-lived WebSocket connections with very different quota/
+  concurrency behavior than one-shot attachment requests.
+- **`src/lib/admin/groq-router-state.ts`** — `getLastGoodGeminiVoiceKeyIndex`
+  / `setLastGoodGeminiVoiceKeyIndex`, a rotation cursor for the voice pool,
+  same pattern as every other key pool in this app.
+- **`src/app/api/voice-token/route.ts`** — the only place a
+  `GEMINI_VOICE_API_KEY_*` value is ever touched. `POST` mints a
+  short-lived **ephemeral token** (Gemini's `authTokens.create`, locked
+  server-side to `gemini-3.1-flash-live-preview` via
+  `liveConnectConstraints`) and returns only that token to the browser —
+  rotating through the key pool on a transient/quota/auth failure, exactly
+  like `runGeminiChat` does for the attachment pool. `GET` just reports
+  whether Voice Mode is configured, for the tab's empty state.
+- **`src/lib/use-voice-session.ts`** — client hook owning the whole
+  session: requests a token, opens a direct browser→Gemini WebSocket
+  session with `@google/genai`'s `ai.live.connect`, captures the
+  microphone (`ScriptProcessorNode` → downsample to 16kHz → 16-bit PCM →
+  base64 → `session.sendRealtimeInput`), and plays back the model's 24kHz
+  PCM audio chunks with sample-accurate scheduling that's cleared
+  instantly on `serverContent.interrupted` (barge-in). Exposes a small
+  state machine (`idle` / `connecting` / `listening` / `thinking` /
+  `speaking` / `error`) plus live transcript turns (via Gemini's built-in
+  input/output audio transcription).
+- **`src/components/chat/voice-panel.tsx`** — the voice UI: an animated
+  orb (different motion per state), a live transcript, and a single
+  call/hang-up button. Uses the app's existing design tokens
+  (`bg-gradient-accent`, `shadow-glow`, etc.) so it matches the rest of
+  NexPrompt rather than looking bolted on.
+- **`src/components/chat/chat-app.tsx`** — adds the Chats/Voice tab
+  switcher (Radix `Tabs`, already used elsewhere in the app) and renders
+  `VoicePanel` instead of `ChatPanel` when Voice is selected. The existing
+  text chat (history, attachments, provider fallback, everything in
+  `chat-panel.tsx`) is untouched.
+
+### Security
+
+- The browser never receives a permanent `GEMINI_VOICE_API_KEY_*` value —
+  only a short-lived ephemeral token (default: 30 minutes to send messages,
+  2 minutes to start a session with it), locked to this app's model and
+  response modality.
+- Minting a token requires a signed-in session (`getAppSessionOrNull`),
+  same as every other authenticated route in this app.
+- Even if a token were somehow intercepted, it expires quickly and can't
+  be used to call any other Gemini endpoint.
+
+### Setting up Voice Mode locally
+
+1. Get a free Gemini API key at <https://aistudio.google.com/apikey>.
+2. Add it to `.env.local`:
+   ```
+   GEMINI_VOICE_API_KEY=your-gemini-api-key
+   ```
+   (Optionally add `GEMINI_VOICE_API_KEY_2`..`_7` for automatic fallback
+   across multiple keys.)
+3. `npm run dev`, sign in, open `/chat`, click the **Voice** tab, then the
+   mic button. Allow microphone access when the browser prompts.
+4. Speak — you should hear Gemini respond within about a second. Talk
+   over it while it's speaking to confirm interruption/barge-in works (it
+   should stop immediately and start listening again).
+5. Click the red hang-up button to end the call and release the
+   microphone.
+
+If `GEMINI_VOICE_API_KEY` isn't set, the Voice tab still renders but shows
+"Voice Mode isn't configured yet" instead of erroring — the rest of the
+app (including the existing text chat) is completely unaffected.
+
+### Files changed/added for Voice Mode
+
+- `src/lib/supabase/config.ts` — added `getGeminiVoiceApiKeys`,
+  `isVoiceModeConfigured`, `getGeminiVoiceKeyLabels`.
+- `src/lib/admin/groq-router-state.ts` — added
+  `getLastGoodGeminiVoiceKeyIndex` / `setLastGoodGeminiVoiceKeyIndex`.
+- `src/app/api/voice-token/route.ts` — **new**. Ephemeral token minting.
+- `src/lib/use-voice-session.ts` — **new**. Client session/audio hook.
+- `src/components/chat/voice-panel.tsx` — **new**. Voice UI.
+- `src/components/chat/chat-app.tsx` — added the Chats/Voice tab switcher.
+- `.env.example` — documented `GEMINI_VOICE_API_KEY_1`..`_7`.

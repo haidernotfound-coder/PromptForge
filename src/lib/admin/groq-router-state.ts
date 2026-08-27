@@ -14,6 +14,10 @@ const lastGoodIndex: Record<GroqPool, number> = { ai: 0, forge_ai: 0, codeforge:
 // Gemini is one shared pool across all three products (see lib/server/gemini.ts),
 // tracked separately from the per-product Groq pools above.
 let lastGoodGeminiIndex = 0;
+// Voice Mode's Gemini Live key pool (GEMINI_VOICE_API_KEY_*) is fully
+// separate from the attachment pool above — see getGeminiVoiceApiKeys in
+// lib/supabase/config.ts — so it gets its own rotation cursor.
+let lastGoodGeminiVoiceIndex = 0;
 
 export function getLastGoodKeyIndex(pool: GroqPool): number {
   return lastGoodIndex[pool];
@@ -29,4 +33,12 @@ export function getLastGoodGeminiKeyIndex(): number {
 
 export function setLastGoodGeminiKeyIndex(index: number): void {
   lastGoodGeminiIndex = index;
+}
+
+export function getLastGoodGeminiVoiceKeyIndex(): number {
+  return lastGoodGeminiVoiceIndex;
+}
+
+export function setLastGoodGeminiVoiceKeyIndex(index: number): void {
+  lastGoodGeminiVoiceIndex = index;
 }
