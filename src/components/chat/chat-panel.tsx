@@ -55,15 +55,33 @@ export function ChatPanel({
   async function send(text: string) {
     const trimmed = text.trim();
     if ((!trimmed && attachmentState.attachments.length === 0) || sending) return;
-    const withUser = [...messages, makeChatMessage("user", trimmed, attachmentState.attachments)];
+    const userMessage = makeChatMessage("user", trimmed, attachmentState.attachments);
+    const withUser = [...messages, userMessage];
     onMessagesChange(withUser);
     const pendingAttachments = attachmentState.attachments;
     setInput("");
     attachmentState.clearAttachments();
     setSending(true);
     try {
-      const reply = await sendChatMessage(withUser, pendingAttachments);
-      onMessagesChange([...withUser, makeChatMessage("assistant", reply)]);
+      const { output, attachmentContext } = await sendChatMessage(withUser, pendingAttachments);
+      // Phase 3 — attachment memory: fold any newly extracted document text
+      // back onto the user message we just sent, so it's replayed as plain
+      // context on later turns even if a later turn is answered by a
+      // different provider than the one that first read the file.
+      const withMemory = attachmentContext.length
+        ? withUser.map((m) =>
+            m.id === userMessage.id && m.attachments
+              ? {
+                  ...m,
+                  attachments: m.attachments.map((a) => {
+                    const match = attachmentContext.find((d) => d.name === a.name);
+                    return match ? { ...a, contextText: match.text } : a;
+                  }),
+                }
+              : m
+          )
+        : withUser;
+      onMessagesChange([...withMemory, makeChatMessage("assistant", output)]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown AI error";
       toast.error(`AI Chat couldn't respond: ${message}`, { duration: 9000 });

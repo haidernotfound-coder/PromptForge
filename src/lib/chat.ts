@@ -21,7 +21,16 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
-  attachments?: { name: string; size: number; kind: string }[];
+  attachments?: {
+    name: string;
+    size: number;
+    kind: string;
+    /** Persisted text content/extracted text/summary for this attachment,
+     *  truncated — see the "Attachment memory" note below. Undefined for
+     *  attachments we couldn't extract text from (e.g. a large file that
+     *  went straight to the Gemini Files API) or for images. */
+    contextText?: string;
+  }[];
 }
 
 export interface ChatConversation {
@@ -116,7 +125,12 @@ export function makeChatMessage(
     content,
     createdAt: new Date().toISOString(),
     attachments: attachments?.length
-      ? attachments.map((a) => ({ name: a.name, size: a.size, kind: a.kind }))
+      ? attachments.map((a) => ({
+          name: a.name,
+          size: a.size,
+          kind: a.kind,
+          contextText: a.textContent ?? a.extractedText ?? undefined,
+        }))
       : undefined,
   };
 }
@@ -129,30 +143,90 @@ export function titleFromMessage(content: string): string {
   return words.length < content.trim().length ? `${words}…` : words;
 }
 
+/** Cap on how much attachment memory gets replayed into a request: keeps a
+ *  long conversation with several file uploads from ballooning every
+ *  subsequent request's payload. Most-recent attachments win. */
+const MAX_MEMORY_BLOCKS = 6;
+const MAX_MEMORY_CHARS_PER_FILE = 6_000;
+const MAX_MEMORY_TOTAL_CHARS = 20_000;
+
+/** Builds "<file>" context blocks from every attachment with persisted
+ *  `contextText` across the given messages (oldest first), most-recent
+ *  files prioritized when the total is capped. This is the fix for the
+ *  provider-switching memory problem: instead of relying on whichever
+ *  provider handled a file to "remember" it, the extracted text/summary is
+ *  replayed as plain context on every later turn, regardless of which
+ *  provider (Gemini, Groq, or a delegated Forge) ends up answering. */
+export function buildAttachmentMemoryBlocks(messages: ChatMessage[]): string[] {
+  const withContext = messages
+    .flatMap((m) => m.attachments ?? [])
+    .filter((a): a is { name: string; size: number; kind: string; contextText: string } =>
+      typeof a.contextText === "string" && a.contextText.trim().length > 0
+    );
+
+  // Most recent first, then de-duplicate by filename (a later re-upload of
+  // the same name wins over an earlier one).
+  const seen = new Set<string>();
+  const deduped: typeof withContext = [];
+  for (const a of [...withContext].reverse()) {
+    if (seen.has(a.name)) continue;
+    seen.add(a.name);
+    deduped.push(a);
+    if (deduped.length >= MAX_MEMORY_BLOCKS) break;
+  }
+
+  const blocks: string[] = [];
+  let total = 0;
+  for (const a of deduped) {
+    const text = a.contextText.length > MAX_MEMORY_CHARS_PER_FILE
+      ? `${a.contextText.slice(0, MAX_MEMORY_CHARS_PER_FILE)}\n[...truncated]`
+      : a.contextText;
+    if (total + text.length > MAX_MEMORY_TOTAL_CHARS) break;
+    total += text.length;
+    blocks.push(`<file name="${a.name}" from="earlier in this conversation">\n${text}\n</file>`);
+  }
+  return blocks;
+}
+
 /** Sends the full conversation to the unified chat endpoint and returns the
- *  assistant's reply text. Throws with a user-facing message on failure —
+ *  assistant's reply text plus any newly extracted attachment text/summary
+ *  the caller should persist onto the just-sent user message (see
+ *  `buildAttachmentMemoryBlocks` above — this is how that text gets there
+ *  in the first place). Throws with a user-facing message on failure —
  *  same "surface the real error, don't fake a demo reply" behavior as
  *  StudyForge/CodeForge chat, since a thrown attachment/provider error is
  *  more useful to the user than a fabricated response. */
 export async function sendChatMessage(
   history: ChatMessage[],
   attachments: ChatAttachment[] = []
-): Promise<string> {
+): Promise<{ output: string; attachmentContext: { name: string; text: string }[] }> {
   const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
   if (errors.length > 0) throw new Error(errors.join(" "));
+
+  // Everything except the message currently being sent — that one's own
+  // attachments are already fully represented via images/documents/
+  // contextBlocks above, so it's excluded here to avoid sending it twice.
+  const memoryBlocks = buildAttachmentMemoryBlocks(history.slice(0, -1));
+
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages: history.map((m) => ({ role: m.role, content: m.content })),
-      contextBlocks,
+      contextBlocks: [...memoryBlocks, ...contextBlocks],
       images,
       documents,
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (res.ok && typeof data.output === "string" && data.output.trim()) {
-    return data.output.trim();
+    const attachmentContext = Array.isArray(data.attachmentContext)
+      ? data.attachmentContext.filter(
+          (d: unknown): d is { name: string; text: string } =>
+            Boolean(d) && typeof (d as { name?: unknown }).name === "string" && typeof (d as { text?: unknown }).text === "string"
+        )
+      : [];
+    return { output: data.output.trim(), attachmentContext };
   }
   throw new Error(typeof data.error === "string" ? data.error : `AI request failed (${res.status})`);
 }

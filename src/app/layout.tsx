@@ -18,16 +18,16 @@ import { getAdminSession } from "@/lib/admin/session";
 
 export const metadata: Metadata = {
   title: {
-    default: "NexPrompt — AI tools for prompts, code, studying, and slides",
+    default: "NexPrompt — AI tools for prompts, code, studying, and chat",
     template: "%s · NexPrompt",
   },
   description:
-    "NexPrompt is the workspace for AI power users: PromptForge for writing, tagging, versioning, and sharing prompts, CodeForge for generating, fixing, and optimizing code, StudyForge for flashcards, quizzes, and study tools, and PPTForge for turning a topic into a downloadable slide deck — all in one platform.",
+    "NexPrompt is the workspace for AI power users: PromptForge for writing, tagging, versioning, and sharing prompts, CodeForge for generating, fixing, and optimizing code, StudyForge for flashcards, quizzes, and study tools, and one unified AI Chat that can write, code, study, and build slide decks in a single conversation.",
   metadataBase: new URL("https://nexprompt.app"),
   openGraph: {
-    title: "NexPrompt — AI tools for prompts, code, studying, and slides",
+    title: "NexPrompt — AI tools for prompts, code, studying, and chat",
     description:
-      "One platform, four forges: craft prompts with PromptForge, ship code with CodeForge, study smarter with StudyForge, and build slide decks with PPTForge, all under one account.",
+      "One platform: craft prompts with PromptForge, ship code with CodeForge, study smarter with StudyForge, and do it all through one unified AI Chat, all under one account.",
     type: "website",
   },
 };

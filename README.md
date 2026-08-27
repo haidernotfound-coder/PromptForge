@@ -478,11 +478,20 @@ The platform is being refactored into one unified, ChatGPT-style AI Chat per
 the plan below. Progress is tracked here; the original brief follows
 unchanged as the working checklist.
 
+> **PPTForge retired as a standalone product.** The `/pptforge` and
+> `/products/pptforge` pages, their sidebar/mobile nav, and every marketing
+> link to them have been removed — AI Chat (`/chat`) is now the only
+> user-facing way to generate a slide deck, per Phase 2's "make me a slide
+> deck about X" delegation below. PPTForge's generation engine itself
+> (`lib/pptforge*.ts`, `POST /api/pptforge`) is untouched and keeps running
+> exactly as before — it's simply an internal implementation detail of AI
+> Chat now, the same way CodeForge's and StudyForge's chat modes are.
+
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Unified AI Chat (interface) | ✅ Complete |
 | 2 | Combine All Forge Capabilities | ✅ Complete |
-| 3 | Attachment Memory | ⬜ Not started |
+| 3 | Attachment Memory | ✅ Complete |
 | 4 | Files + Web Search | ⬜ Not started |
 | 5 | Final UI/UX + Testing | ⬜ Not started |
 
@@ -577,6 +586,81 @@ memory problem — persist attachment references/extracted content/summaries
 in the existing chat/history store so a later message ("now make a PPT from
 that PDF") keeps working even when it routes to a different provider/Forge
 than the message before it.
+
+---
+
+### Phase 3 — Attachment Memory (this build) ✅
+
+- **The problem** — before this phase, an attachment's raw content only
+  ever lived in the single request it was sent with. `sendChatMessage`
+  stored just `{ name, size, kind }` for each attachment in
+  `localStorage`, so once a message with a PDF scrolled into history, a
+  later message like "now make a PPT from that" had nothing to go on
+  except whatever the assistant happened to say about it the first
+  time — and if that first reply came from Gemini (attachments) and the
+  follow-up got answered by Groq or a delegated Forge, there was no
+  shared memory of the file at all.
+- **Persisted attachment context** — `ChatMessage.attachments` (`src/lib/chat.ts`)
+  now carries an optional `contextText` per attachment alongside
+  `name`/`size`/`kind`: for text/code files this is the same
+  client-read `textContent` already available at send time; for
+  PDF/DOCX/ZIP documents it's the extracted text the server sends back
+  after processing the turn (see below). Images are intentionally not
+  given a persisted `contextText` — see "What's deliberately not
+  persisted" below.
+- **Server-side extraction, every attachment turn** — `POST /api/chat`
+  (`src/app/api/chat/route.ts`) now runs the existing local extractor
+  (`lib/server/attachment-extract.ts` — the same `pdf-parse`/`mammoth`/`jszip`
+  code already used as the Gemini-unconfigured fallback) on every inline
+  (`base64`) document on *every* turn that carries one, regardless of
+  whether Gemini is configured and reading the file directly for that
+  reply. The result is returned to the client as `attachmentContext:
+  { name, text }[]` alongside the normal `output`, purely so it can be
+  persisted — this doesn't change what the model sees for that turn.
+  Documents large enough to have gone straight to the Gemini Files API
+  (`geminiFileUri`, no `base64`) are deliberately skipped here — re-
+  uploading/re-extracting a huge file just for memory would defeat the
+  point of not resending it; the assistant's own reply about it still
+  becomes part of the replayed history either way (see below).
+- **Replaying memory on later turns** — `sendChatMessage` now calls a new
+  `buildAttachmentMemoryBlocks()` helper before every request, which scans
+  every earlier message in the conversation for attachments with a
+  persisted `contextText`, de-duplicates by filename (most recent
+  upload of a given name wins), and caps the result (6 files max, 6,000
+  chars/file, 20,000 chars total) to keep later requests from growing
+  unbounded. These blocks are merged into the same `contextBlocks` field
+  the route already threads through to Gemini, the Groq fallback, *and*
+  every delegated Forge (`/api/codeforge`, `/api/studyforge`, `/api/ai`
+  all already read `body.contextBlocks` — no changes needed there), so a
+  file's content is available no matter which provider ends up answering
+  a given turn.
+- **Client-side wiring** — `ChatPanel` (`src/components/chat/chat-panel.tsx`)
+  patches the just-sent user message's attachments with the
+  `attachmentContext` the server returns, then persists the updated
+  conversation — so the extraction only has to happen once per document,
+  the same way the version-history/store patterns elsewhere in the app
+  update one immutable snapshot at a time.
+- **What's deliberately not persisted** — raw image bytes and large
+  (Files-API-uploaded) documents are never written back into
+  `localStorage`. Re-describing an image to build a text summary would
+  cost an extra model call on every single image attachment just to
+  enable a memory feature most conversations won't need; instead, the
+  assistant's own description of an image (in its reply, right after
+  the image was sent) is already part of the conversation history that
+  gets resent on every later turn, which is what actually carries an
+  image forward today. Phase 4 ("Files + Web Search") is a more natural
+  place to revisit richer image memory once real file cards exist.
+- Manually exercised: attach a PDF → ask for a summary (Gemini path) →
+  ask a follow-up that routes to CodeForge or the Groq fallback instead
+  → the reply still reflects the PDF's content, confirmed by inspecting
+  the `contextBlocks` sent on that second request.
+- `npm install && npm run build` passes cleanly with this change.
+
+**Next phase (Phase 4 — Files + Web Search):** let the unified AI create
+and package real files beyond PPTForge's existing `.pptx` output (ZIP/
+project files, code files, supported documents), show generated files as
+proper in-chat file cards instead of the current inline `data:` link, and
+add/reuse web search.
 
 ---
 

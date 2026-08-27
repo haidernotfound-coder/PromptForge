@@ -7,7 +7,7 @@ const FOOTER_LINKS = {
     { href: "/products/promptforge", label: "PromptForge" },
     { href: "/products/codeforge", label: "CodeForge" },
     { href: "/products/studyforge", label: "StudyForge" },
-    { href: "/products/pptforge", label: "PPTForge" },
+    { href: "/chat", label: "AI Chat" },
   ],
   PromptForge: [
     { href: "/products/promptforge#features", label: "Features" },
@@ -37,7 +37,7 @@ export function Footer() {
             </Link>
             <p className="mt-3 text-sm text-text-muted max-w-xs">
               One account, a growing forge of AI-powered tools — PromptForge, CodeForge,
-              StudyForge, and PPTForge, ready across every model.
+              StudyForge, and AI Chat, ready across every model.
             </p>
           </div>
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (

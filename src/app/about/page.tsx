@@ -1,7 +1,7 @@
 export const metadata = {
   title: "About",
   description:
-    "NexPrompt is building the future of AI productivity — powerful yet simple AI tools, with PromptForge, CodeForge, StudyForge, and PPTForge under one platform.",
+    "NexPrompt is building the future of AI productivity — powerful yet simple AI tools, with PromptForge, CodeForge, StudyForge, and a unified AI Chat under one platform.",
   alternates: { canonical: "/about" },
 };
 
@@ -14,7 +14,7 @@ export default function AboutPage() {
         tools that help people work smarter, create faster, and achieve more.
       </p>
       <p className="mt-4 text-text-muted leading-relaxed">
-        With PromptForge, CodeForge, StudyForge, and PPTForge live today, our goal is to build an
+        With PromptForge, CodeForge, StudyForge, and AI Chat live today, our goal is to build an
         ecosystem of AI applications for creators, developers, students, and businesses—all under
         one platform.
       </p>
@@ -32,8 +32,9 @@ export default function AboutPage() {
           into flashcards, quizzes, summaries, and other study tools.
         </li>
         <li>
-          <span className="font-medium text-text">PPTForge</span> — turn a topic into a polished,
-          downloadable slide deck, with layouts, charts, and tables included.
+          <span className="font-medium text-text">AI Chat</span> — one unified assistant that
+          writes, codes, studies, and turns a topic into a polished, downloadable slide deck, all
+          in a single conversation.
         </li>
       </ul>
     </div>

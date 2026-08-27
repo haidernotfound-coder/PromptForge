@@ -183,7 +183,7 @@ async function tryDelegateToForge(
       const base64 = buffer.toString("base64");
       const dataUrl = `data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,${base64}`;
       const sizeKb = (buffer.length / 1024).toFixed(0);
-      return `I put together a slide deck for you on **${intent.topic}** using PPTForge — [Download ${filename}](${dataUrl}) (${sizeKb} KB). Open [PPTForge](/pptforge) directly if you want to tweak the style or slide count.\n\n_(Phase 4 will upgrade this into a proper in-chat file card.)_`;
+      return `I put together a slide deck for you on **${intent.topic}** using PPTForge's generator — [Download ${filename}](${dataUrl}) (${sizeKb} KB). Tell me if you want a different slide count or style and I'll regenerate it right here.\n\n_(Phase 4 will upgrade this into a proper in-chat file card.)_`;
     }
 
     return null;
@@ -238,6 +238,21 @@ export async function POST(request: Request) {
   const documents = body.documents ?? [];
   const hasAttachments = images.length > 0 || documents.length > 0;
   const session = await getAppSessionOrNull();
+
+  // --- Phase 3: attachment memory -----------------------------------------
+  // Extract text from any inline (base64) document on *every* turn that
+  // carries one — regardless of whether Gemini is configured and reading
+  // the file directly for this reply — purely so the caller can persist it
+  // onto the message and replay it as plain-text context on later turns,
+  // even if a later turn is answered by a different provider (Groq) or a
+  // delegated Forge that never sees the raw file. Large files that went
+  // straight to the Gemini Files API (geminiFileUri, no base64) are
+  // deliberately skipped here — re-extracting/re-uploading them just for
+  // memory would defeat the point of not resending huge files; the
+  // assistant's reply about them still becomes part of the replayed
+  // conversation history either way.
+  const attachmentContext = documents.length ? await extractDocuments(documents) : [];
+  // -------------------------------------------------------------------------
 
   // --- Phase 2: intent routing to the existing Forge modules -------------
   // Attachment turns skip delegation and go straight to the Gemini path
@@ -297,7 +312,7 @@ export async function POST(request: Request) {
         await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
       }
       await recordEvent({ userLabel: session?.email, eventType: "forge_ai.chat", success: true, metadata: { provider: "gemini", surface: "unified_chat" } });
-      return NextResponse.json({ output: result.output });
+      return NextResponse.json({ output: result.output, attachmentContext });
     }
 
     await recordEvent({
@@ -320,7 +335,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const extractedDocs = documents.length ? await extractDocuments(documents) : [];
+  const extractedDocs = attachmentContext;
   const contextText = [
     ...(body.contextBlocks ?? []),
     ...extractedDocs.map((d) => `<file name="${d.name}">\n${d.text}\n</file>`),
@@ -362,7 +377,7 @@ export async function POST(request: Request) {
       if (result.ok) {
         setLastGoodKeyIndex("forge_ai", i);
         await recordEvent({ userLabel: session?.email, eventType: "forge_ai.chat", success: true, metadata: { surface: "unified_chat" } });
-        return NextResponse.json({ output: result.output });
+        return NextResponse.json({ output: result.output, attachmentContext });
       }
 
       lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status, detail: result.detail };

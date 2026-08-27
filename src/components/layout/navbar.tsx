@@ -62,7 +62,7 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
               key={link.href}
               href={link.href}
               className={cn(
-                "px-3 py-2 text-sm font-medium rounded-md text-text-muted transition-colors hover:text-text hover:bg-surface",
+                "whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md text-text-muted transition-colors hover:text-text hover:bg-surface",
                 pathname === link.href && "text-text"
               )}
             >
@@ -76,22 +76,22 @@ export function Navbar({ session, isAdmin = false }: { session: AppSession | nul
           {session ? (
             <>
               <Button size="sm" variant="ghost" asChild>
-                <Link href="/products/promptforge">
+                <Link href="/products/promptforge" className="whitespace-nowrap">
                   Open PromptForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
               <Button size="sm" variant="ghost" asChild>
-                <Link href="/products/codeforge">
+                <Link href="/products/codeforge" className="whitespace-nowrap">
                   Open CodeForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
               <Button size="sm" variant="ghost" asChild>
-                <Link href="/products/studyforge">
+                <Link href="/products/studyforge" className="whitespace-nowrap">
                   Open StudyForge <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
               <Button size="sm" variant="ghost" asChild>
-                <Link href="/chat">
+                <Link href="/chat" className="whitespace-nowrap">
                   Open AI Chat <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>

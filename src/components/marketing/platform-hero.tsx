@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, Code2, GraduationCap, Presentation, Zap, ShieldCheck, Layers } from "lucide-react";
+import { ArrowRight, Sparkles, Code2, GraduationCap, MessagesSquare, Zap, ShieldCheck, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PRODUCT_TILES = [
   { name: "PromptForge", tagline: "Write & organize prompts", icon: Sparkles, color: "bg-accent/15 text-accent" },
   { name: "CodeForge", tagline: "Generate & fix code", icon: Code2, color: "bg-blue-500/15 text-blue-400" },
   { name: "StudyForge", tagline: "Flashcards & quizzes", icon: GraduationCap, color: "bg-emerald-500/15 text-emerald-400" },
-  { name: "PPTForge", tagline: "Topic to slide deck", icon: Presentation, color: "bg-orange-500/15 text-orange-400" },
+  { name: "AI Chat", tagline: "One assistant, every task", icon: MessagesSquare, color: "bg-orange-500/15 text-orange-400" },
 ];
 
 export function PlatformHero({ signedIn }: { signedIn: boolean }) {
@@ -35,7 +35,7 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
           </h1>
           <p className="mt-6 text-lg text-text-muted leading-relaxed max-w-lg mx-auto lg:mx-0">
             A single account across every tool NexPrompt ships. PromptForge, CodeForge,
-            StudyForge, and PPTForge are available today — more tools are on the way.
+            StudyForge, and AI Chat are available today — more tools are on the way.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row flex-wrap gap-3 justify-center lg:justify-start">
             {signedIn ? (
@@ -56,8 +56,8 @@ export function PlatformHero({ signedIn }: { signedIn: boolean }) {
                   </Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild>
-                  <Link href="/products/pptforge">
-                    Open PPTForge <ArrowRight className="h-4 w-4" />
+                  <Link href="/chat">
+                    Open AI Chat <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </>
