@@ -656,6 +656,40 @@ than the message before it.
   the `contextBlocks` sent on that second request.
 - `npm install && npm run build` passes cleanly with this change.
 
+### Post-Phase-3 bug fixes (this build) ✅
+
+Two issues reported after Phase 3 shipped:
+
+- **"AI Chat couldn't respond: Conversation is too long"** — `POST
+  /api/chat` used to hard-reject any request once the conversation's total
+  character count crossed 40,000. Because every request always resends the
+  *entire* history (`sendChatMessage` in `lib/chat.ts`), that limit was a
+  one-way door: the very first message that pushed a conversation over it
+  failed, and every message after that failed too, forever — the
+  conversation was permanently bricked with no way to recover short of
+  starting a new chat. Fixed in `src/app/api/chat/route.ts`: instead of
+  rejecting, the route now keeps a sliding window of the most recent
+  messages that fits a generous 120,000-character budget, silently
+  dropping the oldest turns first, and applies that same windowed history
+  to the delegate call, the Gemini path, and the Groq fallback alike. The
+  only remaining hard rejection is a single message over 200,000
+  characters (a giant paste) — a case genuinely worth asking the user to
+  trim, since truncating *inside* one message risks cutting off the very
+  thing they just asked about.
+- **"I can't view images" even though attaching one works fine** — asking
+  "read this image and tell me what's in it" *without* attaching anything
+  routed correctly to the plain-text Groq model (there's nothing to send
+  vision-wise if no image came through), but the model had no way to know
+  it's normally capable of reading attachments, so it answered as if it
+  could never view images or files at all — misleading, since attaching
+  one works. Fixed by adding an explicit line to `SYSTEM_PROMPT` (shared by
+  the Groq and Gemini paths) telling the model it can view attached
+  images/PDFs/DOCX/ZIP/text files whenever one is actually attached, and
+  that if the user references an image/file with nothing attached on that
+  message, it should say so and ask them to attach it — not claim a
+  blanket inability.
+- `npm install && npm run build` passes cleanly with both fixes.
+
 **Next phase (Phase 4 — Files + Web Search):** let the unified AI create
 and package real files beyond PPTForge's existing `.pptx` output (ZIP/
 project files, code files, supported documents), show generated files as

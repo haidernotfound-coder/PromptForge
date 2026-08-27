@@ -62,6 +62,7 @@ const SYSTEM_PROMPT = [
   "You are the AI Chat inside NexPrompt, a single unified assistant for the whole platform.",
   "Answer naturally and helpfully on any topic, the way a general-purpose chat assistant would.",
   "You can discuss and help write prompts, code, study material, or presentation content — just answer in plain, well-formatted markdown; you are not restricted to one of those domains.",
+  "You are fully capable of viewing and reading attached images, PDFs, DOCX, ZIP, and text/code files whenever the user attaches one — this happens routinely and works well. If the user's message refers to an image or file (e.g. \"read this image\", \"what does this file say\") but no attachment came through with this message, do not claim you are unable to view images or files in general — that would be false. Instead, simply let them know you don't see an attachment on this message and ask them to attach the image or file using the attachment button.",
   "Use markdown formatting (headings, lists, fenced code blocks with a language tag) whenever it makes a reply easier to read.",
   "Keep replies focused and no longer than the question calls for.",
 ].join(" ");
@@ -225,9 +226,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing messages" }, { status: 400 });
   }
   const totalLength = cleanMessages.reduce((sum, m) => sum + m.content.length, 0);
-  if (totalLength > 40_000) {
-    return NextResponse.json({ error: "Conversation is too long" }, { status: 413 });
+  // A single message this large (a giant paste) is the one case still worth
+  // rejecting outright rather than silently truncating — trimming *within*
+  // one message would risk cutting off the very thing the user just asked
+  // about.
+  const longestMessage = Math.max(...cleanMessages.map((m) => m.content.length));
+  if (longestMessage > 200_000) {
+    return NextResponse.json({ error: "That message is too long — try trimming it and sending again." }, { status: 413 });
   }
+  // A long-running conversation used to hit a hard "Conversation is too
+  // long" wall once its *total* content crossed 40,000 chars — and since
+  // every request always resends the full history, that wall never went
+  // away again: every future message in that conversation failed forever.
+  // Instead, keep only as much of the tail of the conversation as fits a
+  // generous context budget, dropping the oldest turns first. The newest
+  // user message (the one actually being answered) is always kept even if
+  // it alone were somehow close to the budget.
+  const MAX_CONVERSATION_CHARS = 120_000;
+  const windowedMessages = ((): UnifiedChatMessage[] => {
+    if (totalLength <= MAX_CONVERSATION_CHARS) return cleanMessages;
+    const kept = [...cleanMessages];
+    let remaining = totalLength;
+    while (kept.length > 1 && remaining > MAX_CONVERSATION_CHARS) {
+      const dropped = kept.shift();
+      remaining -= dropped?.content.length ?? 0;
+    }
+    return kept;
+  })();
 
   const attachmentError = validateAttachmentPayload(body);
   if (attachmentError) {
@@ -258,13 +283,13 @@ export async function POST(request: Request) {
   // Attachment turns skip delegation and go straight to the Gemini path
   // below unchanged — attachment-aware delegation is Phase 3/4 territory.
   if (!hasAttachments) {
-    const lastUserMessage = [...cleanMessages].reverse().find((m) => m.role === "user");
+    const lastUserMessage = [...windowedMessages].reverse().find((m) => m.role === "user");
     const intent = lastUserMessage ? detectChatIntent(lastUserMessage.content) : { kind: "normal" as const };
 
     const delegated = await tryDelegateToForge(intent, {
       origin: new URL(request.url).origin,
       cookie: request.headers.get("cookie") ?? "",
-      cleanMessages,
+      cleanMessages: windowedMessages,
       images,
       documents,
       contextBlocks: body.contextBlocks ?? [],
@@ -284,7 +309,7 @@ export async function POST(request: Request) {
   // Same reasoning as Forge AI: any turn carrying an image/document routes to
   // Gemini (native file understanding) instead of flattened Groq-vision text.
   if (hasAttachments && isGeminiConfigured()) {
-    const geminiHistory: GeminiChatTurn[] = cleanMessages.map((m) => ({ role: m.role, content: m.content }));
+    const geminiHistory: GeminiChatTurn[] = windowedMessages.map((m) => ({ role: m.role, content: m.content }));
     const extraContextText = (body.contextBlocks ?? []).join("\n\n");
     const geminiKeys = getGeminiApiKeys();
     const geminiKeyLabels = getGeminiKeyLabels();
@@ -343,8 +368,8 @@ export async function POST(request: Request) {
 
   const useVision = images.length > 0;
 
-  const groqMessages: GroqMessage[] = cleanMessages.map((m, idx) => {
-    const isLastUser = idx === cleanMessages.length - 1 && m.role === "user";
+  const groqMessages: GroqMessage[] = windowedMessages.map((m, idx) => {
+    const isLastUser = idx === windowedMessages.length - 1 && m.role === "user";
     if (!isLastUser || (!contextText && images.length === 0)) {
       return { role: m.role, content: m.content };
     }
