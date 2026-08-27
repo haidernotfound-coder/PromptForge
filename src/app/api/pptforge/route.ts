@@ -62,7 +62,10 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
       // see console.groq.com/docs/deprecations. openai/gpt-oss-120b is Groq's
       // recommended replacement.
       model: "openai/gpt-oss-120b",
-      max_tokens: 8000,
+      // Bumped from 8000: a full 20-slide deck (PPTFORGE_MAX_SLIDES) with
+      // bullets/tables/charts per slide could exceed 8000 tokens and get
+      // truncated mid-JSON, which parseDeckPlan then rejects as unparsable.
+      max_tokens: 16000,
       temperature: 0.6,
       response_format: { type: "json_object" },
       messages: [
@@ -91,17 +94,43 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
  *  the model to have followed every instruction exactly. Returns null (never
  *  throws) on unrecoverable shapes. */
 function parseDeckPlan(raw: string, requestedSlides: number, fallbackTitle: string): PptForgeDeckPlan | null {
-  const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  let cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+
+  // Defensive: if the model wrapped the JSON in any leading/trailing prose,
+  // slice to the outermost braces before parsing.
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace > 0 || (lastBrace !== -1 && lastBrace < cleaned.length - 1)) {
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error("PPTForge parseDeckPlan: JSON.parse failed", {
+      error: err instanceof Error ? err.message : String(err),
+      rawLength: raw.length,
+      rawPreview: raw.slice(0, 500),
+      rawTail: raw.slice(-200),
+    });
     return null;
   }
-  if (!parsed || typeof parsed !== "object") return null;
+  if (!parsed || typeof parsed !== "object") {
+    console.error("PPTForge parseDeckPlan: parsed value is not an object", { parsed });
+    return null;
+  }
   const obj = parsed as Record<string, unknown>;
   const slidesRaw = Array.isArray(obj.slides) ? obj.slides : null;
-  if (!slidesRaw || slidesRaw.length === 0) return null;
+  if (!slidesRaw || slidesRaw.length === 0) {
+    console.error("PPTForge parseDeckPlan: no usable `slides` array", {
+      keys: Object.keys(obj),
+      slidesType: typeof obj.slides,
+    });
+    return null;
+  }
 
   const VALID_LAYOUTS = new Set([
     "title",
