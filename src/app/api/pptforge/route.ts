@@ -50,12 +50,14 @@ interface GroqCallResult {
   status?: number;
 }
 
-// Tried in order for each key: gemma2-9b-it has a notably higher free-tier
-// TPM ceiling than gpt-oss-120b, so it's tried first to avoid 413s; if it
-// fails (rate-limited or unusable output) we fall back to gpt-oss-120b on
-// the SAME key before rotating to the next key. This is scoped to PPTForge
-// only — CodeForge/StudyForge are untouched.
-const PPTFORGE_MODELS = ["gemma2-9b-it", "openai/gpt-oss-120b"] as const;
+// Tried in order for each key: openai/gpt-oss-20b is a smaller model than
+// gpt-oss-120b and gets a higher free-tier TPM ceiling, so it's tried first
+// to avoid 413s; if it fails (rate-limited or unusable output) we fall back
+// to gpt-oss-120b on the SAME key before rotating to the next key.
+// NOTE: gemma2-9b-it was previously tried here but Groq deprecated it on
+// 2025-10-08 (400 Bad Request) — do not reintroduce it.
+// This model list is scoped to PPTForge only — CodeForge/StudyForge untouched.
+const PPTFORGE_MODELS = ["openai/gpt-oss-20b", "openai/gpt-oss-120b"] as const;
 
 async function callGroqForPlan(apiKey: string, userPrompt: string, model: string): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -82,10 +84,12 @@ async function callGroqForPlan(apiKey: string, userPrompt: string, model: string
   if (!response.ok) {
     const errText = await response.text();
     console.error("PPTForge Groq API error", model, response.status, errText);
-    // 429/401/403: this key is genuinely spent/invalid, try the next one.
-    // 413 (request too large / TPM limit) can also vary per-key/org, so
-    // treat it the same way rather than aborting the whole retry loop.
-    if (response.status === 429 || response.status === 401 || response.status === 403 || response.status === 413) {
+    // 429/401/403/413: this key/model combo is genuinely rate/size-limited,
+    // try the next one. 400 (e.g. a deprecated/invalid model on Groq's end)
+    // is also made retryable here so a single bad model in PPTFORGE_MODELS
+    // can't dead-end the whole request — it just falls through to the next
+    // model/key instead.
+    if (response.status === 429 || response.status === 401 || response.status === 403 || response.status === 413 || response.status === 400) {
       return { ok: false, exhausted: true, status: response.status };
     }
     return { ok: false, exhausted: false, status: response.status };
