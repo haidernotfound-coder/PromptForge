@@ -13,6 +13,8 @@ export type ChatIntent =
   | { kind: "study" }
   | { kind: "ppt"; topic: string }
   | { kind: "promptforge"; action: "improve" | "rewrite" | "expand" | "shorten" | "critique"; input: string }
+  | { kind: "file"; topic: string }
+  | { kind: "search"; query: string }
   | { kind: "normal" };
 
 const CODE_RE =
@@ -27,6 +29,22 @@ const PPT_RE =
 const PROMPTFORGE_RE =
   /\b(improve|rewrite|expand|shorten|critique)\s+(this|my|the following)\s+prompt\b/i;
 
+// "Package/zip/bundle this up", "give me that as a file/zip/download",
+// "save this as a file", "download this as code files" — anything asking
+// for actual bytes back rather than another chat reply. Deliberately
+// narrow (Phase 4 packages what's already in the conversation; it isn't a
+// general-purpose "write me code" trigger — CODE_RE above already covers
+// that and the reply itself can always be packaged after the fact).
+const FILE_RE =
+  /\b(zip (this|that|these|it)( up)?|package (this|that|these|it)( up)?|bundle (this|that|these)( up)?|(give|send) me (this|that|it) as a (file|download|zip)|save (this|that|it) as a (file|document|zip)|download (this|that|it) as( a)?( code)? files?|make (this|that|it) (a )?(downloadable|zip) file)\b/i;
+
+// Explicit "go check the web" requests — current-events/lookup phrasing.
+// Kept conservative on purpose: a false negative just answers from the
+// model's own knowledge (status quo), while a false positive would silently
+// spend a Gemini grounded-search call on an ordinary question.
+const SEARCH_RE =
+  /\b(search (the web|online|the internet) for|web search for|google|look up|what'?s the latest (on|news about)|latest news (on|about)|current(ly)? (happening|going on) (with|in)|what happened (with|to)|find (me )?(recent|current) (news|information) (on|about))\b/i;
+
 function stripLeadIn(message: string, triggerRe: RegExp): string {
   return message.replace(triggerRe, "").replace(/^[\s:,-]+/, "").trim();
 }
@@ -40,6 +58,19 @@ export function detectChatIntent(message: string): ChatIntent {
     const action = promptMatch[1].toLowerCase() as "improve" | "rewrite" | "expand" | "shorten" | "critique";
     const input = stripLeadIn(trimmed, PROMPTFORGE_RE) || trimmed;
     return { kind: "promptforge", action, input };
+  }
+
+  // Checked before PPT/code/study so "zip up that code" or "download that
+  // slide deck as a file" packages what already exists instead of
+  // re-generating it from scratch through a Forge.
+  if (FILE_RE.test(trimmed)) {
+    const topic = stripLeadIn(trimmed, FILE_RE) || trimmed;
+    return { kind: "file", topic };
+  }
+
+  if (SEARCH_RE.test(trimmed)) {
+    const query = stripLeadIn(trimmed, SEARCH_RE) || trimmed;
+    return { kind: "search", query };
   }
 
   // A fenced code block in the message is as strong a signal as any keyword.

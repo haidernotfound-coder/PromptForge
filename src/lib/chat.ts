@@ -31,6 +31,19 @@ export interface ChatMessage {
      *  went straight to the Gemini Files API) or for images. */
     contextText?: string;
   }[];
+  /** Phase 4 (Files + Web Search): real generated files attached to an
+   *  assistant reply — a PPTForge deck, a packaged code ZIP, or a plain
+   *  text/markdown file — rendered as a file card instead of an inline
+   *  markdown data: link. */
+  files?: {
+    name: string;
+    mimeType: string;
+    dataUrl: string;
+    size: number;
+  }[];
+  /** Phase 4: web sources Gemini's search grounding cited for this reply,
+   *  shown as a short "Sources" list under the message. */
+  sources?: { title: string; uri: string }[];
 }
 
 export interface ChatConversation {
@@ -117,7 +130,8 @@ export function createChatConversation(): ChatConversation {
 export function makeChatMessage(
   role: ChatMessage["role"],
   content: string,
-  attachments?: ChatAttachment[]
+  attachments?: ChatAttachment[],
+  extras?: { files?: ChatMessage["files"]; sources?: ChatMessage["sources"] }
 ): ChatMessage {
   return {
     id: id(),
@@ -132,6 +146,8 @@ export function makeChatMessage(
           contextText: a.textContent ?? a.extractedText ?? undefined,
         }))
       : undefined,
+    files: extras?.files?.length ? extras.files : undefined,
+    sources: extras?.sources?.length ? extras.sources : undefined,
   };
 }
 
@@ -199,7 +215,12 @@ export function buildAttachmentMemoryBlocks(messages: ChatMessage[]): string[] {
 export async function sendChatMessage(
   history: ChatMessage[],
   attachments: ChatAttachment[] = []
-): Promise<{ output: string; attachmentContext: { name: string; text: string }[] }> {
+): Promise<{
+  output: string;
+  attachmentContext: { name: string; text: string }[];
+  files: ChatMessage["files"];
+  sources: ChatMessage["sources"];
+}> {
   const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
   if (errors.length > 0) throw new Error(errors.join(" "));
 
@@ -226,7 +247,23 @@ export async function sendChatMessage(
             Boolean(d) && typeof (d as { name?: unknown }).name === "string" && typeof (d as { text?: unknown }).text === "string"
         )
       : [];
-    return { output: data.output.trim(), attachmentContext };
+    const files: ChatMessage["files"] = Array.isArray(data.files)
+      ? data.files.filter(
+          (f: unknown): f is NonNullable<ChatMessage["files"]>[number] =>
+            Boolean(f) &&
+            typeof (f as { name?: unknown }).name === "string" &&
+            typeof (f as { mimeType?: unknown }).mimeType === "string" &&
+            typeof (f as { dataUrl?: unknown }).dataUrl === "string" &&
+            typeof (f as { size?: unknown }).size === "number"
+        )
+      : undefined;
+    const sources: ChatMessage["sources"] = Array.isArray(data.sources)
+      ? data.sources.filter(
+          (s: unknown): s is NonNullable<ChatMessage["sources"]>[number] =>
+            Boolean(s) && typeof (s as { title?: unknown }).title === "string" && typeof (s as { uri?: unknown }).uri === "string"
+        )
+      : undefined;
+    return { output: data.output.trim(), attachmentContext, files, sources };
   }
   throw new Error(typeof data.error === "string" ? data.error : `AI request failed (${res.status})`);
 }

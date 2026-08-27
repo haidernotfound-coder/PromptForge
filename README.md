@@ -690,11 +690,74 @@ Two issues reported after Phase 3 shipped:
   blanket inability.
 - `npm install && npm run build` passes cleanly with both fixes.
 
-**Next phase (Phase 4 — Files + Web Search):** let the unified AI create
-and package real files beyond PPTForge's existing `.pptx` output (ZIP/
-project files, code files, supported documents), show generated files as
-proper in-chat file cards instead of the current inline `data:` link, and
-add/reuse web search.
+---
+
+### Phase 4 — Files + Web Search (this build) ✅
+
+- **Real file cards, not a markdown data: link** — the PPTForge delegate
+  branch in `POST /api/chat` (`src/app/api/chat/route.ts`) now returns its
+  generated `.pptx` bytes as a structured `files: GeneratedFile[]` field
+  on the JSON response instead of base64-encoding them into a
+  `[Download foo.pptx](data:...)` link inlined in the markdown reply. A new
+  `ChatMessage.files` field (`src/lib/chat.ts`) carries these onto the
+  assistant message, and a new `<FileCard />` / `<FileCardList />`
+  component (`src/components/shared/file-card.tsx`) renders each one as a
+  proper download card — icon, filename, kind, size, download button —
+  under the reply in `ChatPanel`. `GeneratedFile` is a small, reusable
+  `{ name, mimeType, dataUrl, size }` shape (`src/lib/server/file-builder.ts`)
+  so any future generator (or a future real upload/storage backend) can
+  slot into the same file-card UI without another round of client changes.
+- **Packaging code/text into a downloadable file, on request** — a new
+  `"file"` intent in `lib/server/chat-intent.ts` recognizes phrasing like
+  "zip this up", "package that", "give me this as a file/download", or
+  "save that as a document" and — purely locally, no extra model call —
+  packages the fenced code blocks in the assistant's most recent reply
+  into real bytes via `src/lib/server/file-builder.ts`: one file with the
+  right extension when there's a single code block, a `.zip` (via
+  `jszip`, already a dependency for reading `.zip` attachments) when
+  there are several, or a `.md` of the reply's own text when there's no
+  code to package. This intent is checked before the code/study/ppt
+  regexes in `detectChatIntent` so "zip up that code" packages what
+  already exists in the conversation instead of asking CodeForge to
+  regenerate it. If there's no prior assistant reply yet to package, the
+  turn falls through to a normal chat reply instead of erroring.
+- **Web search, reusing the existing Gemini key pool** — a new `"search"`
+  intent recognizes explicit lookup phrasing ("search the web for…",
+  "look up…", "what's the latest on…", "current news about…") and, when
+  Gemini is configured, calls it with its own built-in Google Search
+  grounding tool enabled (`enableWebSearch` on `runGeminiChat` in
+  `src/lib/server/gemini.ts`, which adds `tools: [{ googleSearch: {} }]`
+  to the Gemini request). This authenticates with the exact same
+  `GEMINI_API_KEY_*` pool every attachment turn already uses — no new
+  search API, no new environment variable, no duplicate provider/fallback
+  system. Cited sources are pulled out of Gemini's `groundingMetadata` and
+  returned as `sources: { title, uri }[]`, persisted on the assistant
+  message and rendered as a short "Sources" list under the reply in
+  `ChatPanel`. Kept deliberately conservative/regex-based (like every
+  other intent in this file) rather than firing on any question that
+  might benefit from freshness, so an ordinary question never silently
+  costs an extra grounded call; if Gemini isn't configured or the grounded
+  call fails, the turn falls through to a normal reply exactly like every
+  other delegate here.
+- **What's deliberately not built here** — no new file storage/upload
+  backend (generated files stay `data:` URLs in the message, same
+  transport PPTForge's inline link already used, just structured now
+  instead of embedded in markdown); no duplicate search provider (Gemini's
+  own grounding tool is the entire "web search" implementation); packaging
+  only ever operates on text already in the conversation, it doesn't
+  generate new code/content on its own — that's still CodeForge/PromptForge's
+  job via the existing Phase 2 delegation.
+- `npm install && npm run build` passes cleanly with this change.
+
+**Next phase (Phase 5 — Final UI/UX + Testing):** polish the unified chat
+into the finished ChatGPT-style experience — sidebar/history, New Chat,
+composer, attachments, voice, and settings/profile all reviewed together
+for a consistent, responsive/mobile-friendly UI with clear streaming/
+loading states, and no unnecessary Forge-switching friction. Then a full
+pass testing: normal chat, history, attachment memory, attachment
+follow-ups, voice, web search, code debugging, study help, PPT generation,
+prompt improvement, file generation, provider fallbacks, authentication,
+and refresh/reopen of conversations.
 
 ---
 

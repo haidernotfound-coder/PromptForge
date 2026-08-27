@@ -32,8 +32,13 @@ export const GEMINI_INLINE_BYTES_THRESHOLD = 15 * 1024 * 1024; // 15 MB
 // provider-specific ceiling referenced by that 100 MB path.
 export const GEMINI_MAX_FILE_BYTES = 100 * 1024 * 1024;
 
+export interface GeminiSearchSource {
+  title: string;
+  uri: string;
+}
+
 export type GeminiCallResult =
-  | { ok: true; output: string }
+  | { ok: true; output: string; sources?: GeminiSearchSource[] }
   | { ok: false; exhausted: true; detail?: string } // quota/rate-limit/transient — try the next key
   | { ok: false; exhausted: false; status: number; detail?: string }; // permanent — stop retrying
 
@@ -202,25 +207,40 @@ function buildContents(
 async function callGeminiOnce(
   apiKey: string,
   systemInstruction: string,
-  contents: Content[]
+  contents: Content[],
+  opts: { enableWebSearch?: boolean } = {}
 ): Promise<GeminiCallResult> {
   try {
     const ai = new GoogleGenAI({ apiKey });
+    const config: Record<string, unknown> = {
+      systemInstruction,
+      maxOutputTokens: 4096,
+      temperature: 0.4,
+    };
+    // Gemini's built-in Google Search grounding tool — reuses the same
+    // Gemini API key pool every attachment turn already authenticates
+    // with, so web search needs no new provider, env var, or fallback
+    // system of its own (see Phase 4 note in chat/route.ts). Passed as a
+    // loosely-typed field since the installed @google/genai SDK version's
+    // exact `tools` typing isn't pinned down here; the Gemini API itself
+    // accepts this shape.
+    if (opts.enableWebSearch) {
+      config.tools = [{ googleSearch: {} }];
+    }
     const response = await ai.models.generateContent({
       model: GEMINI_TEXT_MODEL,
       contents,
-      config: {
-        systemInstruction,
-        maxOutputTokens: 4096,
-        temperature: 0.4,
-      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config: config as any,
     });
 
     const output = (response.text ?? "").trim();
     if (!output) {
       return { ok: false, exhausted: false, status: 502, detail: "Empty response from Gemini" };
     }
-    return { ok: true, output };
+
+    const sources = extractSearchSources(response);
+    return { ok: true, output, ...(sources.length ? { sources } : {}) };
   } catch (err) {
     console.error("Gemini API error", err);
     const { retryable, status, detail } = isRetryableGeminiError(err);
@@ -241,6 +261,36 @@ export interface GeminiChatRequest {
    *  attachments, which never need to go through Gemini itself since
    *  they're already text) to fold in alongside the file attachments. */
   extraContextText?: string;
+  /** Phase 4 (Files + Web Search): grounds the reply in live Google Search
+   *  results via Gemini's own built-in search tool instead of a separate
+   *  search API/key. Mutually usable alongside attachments, though in
+   *  practice the unified chat route only sets this for attachment-free
+   *  "search the web for…" turns. */
+  enableWebSearch?: boolean;
+}
+
+/** Pulls (title, uri) pairs out of Gemini's `groundingMetadata` so the
+ *  caller can show "Sources" under a web-search-grounded reply. Best-effort
+ *  — grounding metadata shape is additive/optional, so this never throws. */
+function extractSearchSources(response: { candidates?: unknown[] }): GeminiSearchSource[] {
+  try {
+    const candidate = response.candidates?.[0] as
+      | { groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }
+      | undefined;
+    const chunks = candidate?.groundingMetadata?.groundingChunks ?? [];
+    const seen = new Set<string>();
+    const sources: GeminiSearchSource[] = [];
+    for (const chunk of chunks) {
+      const uri = chunk.web?.uri;
+      const title = chunk.web?.title;
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      sources.push({ title: title || uri, uri });
+    }
+    return sources;
+  } catch {
+    return [];
+  }
 }
 
 export interface GeminiChatOutcome {
@@ -301,14 +351,14 @@ export async function uploadFileToGeminiWithRotation(
  *  route. Stops immediately on a permanent failure (bad request/unsupported
  *  file) instead of repeating it against every remaining key. */
 export async function runGeminiChat(request: GeminiChatRequest, startIndex: number): Promise<GeminiChatOutcome> {
-  const { keys, systemInstruction, history, images = [], documents = [], extraContextText = "" } = request;
+  const { keys, systemInstruction, history, images = [], documents = [], extraContextText = "", enableWebSearch = false } = request;
   const contents = buildContents(history, images, documents, extraContextText);
   const order = keys.map((_, i) => (startIndex + i) % keys.length);
   const attempts: { keyIndex: number; detail?: string }[] = [];
 
   let lastResult: GeminiCallResult | null = null;
   for (const i of order) {
-    const result = await callGeminiOnce(keys[i], systemInstruction, contents);
+    const result = await callGeminiOnce(keys[i], systemInstruction, contents, { enableWebSearch });
     lastResult = result;
     if (result.ok) {
       return { result, goodKeyIndex: i, attempts };

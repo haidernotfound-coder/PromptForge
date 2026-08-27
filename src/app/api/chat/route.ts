@@ -7,6 +7,7 @@ import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/ser
 import { extractDocuments } from "@/lib/server/attachment-extract";
 import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
 import { detectChatIntent } from "@/lib/server/chat-intent";
+import { buildFileFromText, toGeneratedFile, type GeneratedFile } from "@/lib/server/file-builder";
 
 /**
  * Unified AI Chat provider wiring.
@@ -39,12 +40,23 @@ import { detectChatIntent } from "@/lib/server/chat-intent";
  * below instead of surfacing that Forge's error -- a wrong intent guess
  * should never break the chat.
  *
- * PPTForge delegation is the one special case: PPTForge's route streams
- * back real .pptx bytes, not JSON. Phase 4 ("Files + Web Search") owns
- * turning generated files into proper in-chat file cards, so until then
- * this route base64-encodes the bytes into a data: link inline in the
- * markdown reply -- a real, downloadable file today, just not the
- * polished file-card UI Phase 4 will add.
+ * Phase 4 (Files + Web Search) adds two more delegate-style branches on top
+ * of Phase 2's:
+ *  - PPTForge delegation now returns its .pptx bytes as a structured
+ *    `files: GeneratedFile[]` entry (see lib/server/file-builder.ts)
+ *    instead of a base64 data: link inlined into the markdown reply, so
+ *    the client renders a real in-chat file card.
+ *  - A "file" intent ("zip this up", "give me that as a file") packages
+ *    the fenced code blocks in the most recent assistant reply (or, with
+ *    nothing to package, the reply's own text) into a downloadable
+ *    .zip/code/.md file the same way -- purely local packaging (jszip,
+ *    already a dependency), no extra model call.
+ *  - A "search" intent ("search the web for…", "what's the latest on…")
+ *    routes to Gemini with its built-in Google Search grounding tool
+ *    enabled, reusing the exact same Gemini key pool every attachment
+ *    turn already authenticates with -- no new search API, no new
+ *    environment variable. Cited sources are returned as `sources` and
+ *    rendered under the reply.
  */
 
 export const runtime = "nodejs";
@@ -127,6 +139,11 @@ async function callGroq(
  * configured/enabled, or the call otherwise failed, in which case the
  * caller falls back to the normal general-purpose reply.
  */
+interface DelegateResult {
+  output: string;
+  files?: GeneratedFile[];
+}
+
 async function tryDelegateToForge(
   intent: ReturnType<typeof detectChatIntent>,
   ctx: {
@@ -137,7 +154,7 @@ async function tryDelegateToForge(
     documents: AttachmentRequestBody["documents"];
     contextBlocks: string[];
   }
-): Promise<string | null> {
+): Promise<DelegateResult | null> {
   const call = (path: string, payload: unknown) =>
     fetch(`${ctx.origin}${path}`, {
       method: "POST",
@@ -158,7 +175,7 @@ async function tryDelegateToForge(
       });
       if (!res.ok) return null; // disabled/not configured/failed — fall back to a normal reply.
       const data = (await res.json()) as { output?: string };
-      return typeof data.output === "string" && data.output.trim() ? data.output : null;
+      return typeof data.output === "string" && data.output.trim() ? { output: data.output } : null;
     }
 
     if (intent.kind === "promptforge") {
@@ -167,9 +184,9 @@ async function tryDelegateToForge(
       const data = (await res.json()) as { output?: string };
       if (typeof data.output !== "string" || !data.output.trim()) return null;
       if (intent.action === "critique") {
-        return `Here's the PromptForge critique:\n\n\`\`\`json\n${data.output.trim()}\n\`\`\``;
+        return { output: `Here's the PromptForge critique:\n\n\`\`\`json\n${data.output.trim()}\n\`\`\`` };
       }
-      return `Here's the ${intent.action}d prompt (via PromptForge):\n\n${data.output.trim()}`;
+      return { output: `Here's the ${intent.action}d prompt (via PromptForge):\n\n${data.output.trim()}` };
     }
 
     if (intent.kind === "ppt") {
@@ -181,10 +198,15 @@ async function tryDelegateToForge(
       const filenameMatch = disposition.match(/filename="([^"]+)"/);
       const filename = filenameMatch?.[1] ?? "presentation.pptx";
       const buffer = Buffer.from(await res.arrayBuffer());
-      const base64 = buffer.toString("base64");
-      const dataUrl = `data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,${base64}`;
-      const sizeKb = (buffer.length / 1024).toFixed(0);
-      return `I put together a slide deck for you on **${intent.topic}** using PPTForge's generator — [Download ${filename}](${dataUrl}) (${sizeKb} KB). Tell me if you want a different slide count or style and I'll regenerate it right here.\n\n_(Phase 4 will upgrade this into a proper in-chat file card.)_`;
+      const file = toGeneratedFile(
+        buffer,
+        filename,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      );
+      return {
+        output: `I put together a slide deck for you on **${intent.topic}** using PPTForge's generator — see the file below. Tell me if you want a different slide count or style and I'll regenerate it right here.`,
+        files: [file],
+      };
     }
 
     return null;
@@ -279,12 +301,77 @@ export async function POST(request: Request) {
   const attachmentContext = documents.length ? await extractDocuments(documents) : [];
   // -------------------------------------------------------------------------
 
-  // --- Phase 2: intent routing to the existing Forge modules -------------
+  // --- Phase 2/4: intent routing to the existing Forge modules -----------
   // Attachment turns skip delegation and go straight to the Gemini path
   // below unchanged — attachment-aware delegation is Phase 3/4 territory.
   if (!hasAttachments) {
     const lastUserMessage = [...windowedMessages].reverse().find((m) => m.role === "user");
     const intent = lastUserMessage ? detectChatIntent(lastUserMessage.content) : { kind: "normal" as const };
+
+    // --- Phase 4: "package this as a file" — purely local, no model call.
+    // Packages the most recent assistant reply (what "this"/"that" refers
+    // to in "zip this up") into real bytes via lib/server/file-builder.ts.
+    // Falls through to a normal reply if there's nothing yet to package.
+    if (intent.kind === "file") {
+      const lastAssistantMessage = [...windowedMessages].reverse().find((m) => m.role === "assistant");
+      if (lastAssistantMessage) {
+        const file = await buildFileFromText(lastAssistantMessage.content, intent.topic);
+        await recordEvent({
+          userLabel: session?.email,
+          eventType: "forge_ai.chat",
+          success: true,
+          metadata: { surface: "unified_chat", delegatedTo: "file" },
+        });
+        return NextResponse.json({
+          output: `Here's **${file.name}** — packaged from my last reply.`,
+          files: [file],
+        });
+      }
+      // Nothing to package yet — fall through to a normal reply below.
+    }
+
+    // --- Phase 4: web search — grounds the reply in live Google Search
+    // results via Gemini's own search tool (see lib/server/gemini.ts).
+    // Falls through to the normal reply below if Gemini isn't configured
+    // or the grounded call fails, same "never break the chat" contract as
+    // every other delegate.
+    if (intent.kind === "search" && isGeminiConfigured()) {
+      const geminiHistory: GeminiChatTurn[] = windowedMessages.map((m) => ({ role: m.role, content: m.content }));
+      const geminiKeys = getGeminiApiKeys();
+      const geminiKeyLabels = getGeminiKeyLabels();
+      const startIndex = getLastGoodGeminiKeyIndex();
+
+      const { result, goodKeyIndex, attempts } = await runGeminiChat(
+        {
+          keys: geminiKeys,
+          systemInstruction: `${SYSTEM_PROMPT} You have live web search available for this reply — use it to answer with current information, and briefly mention when something is time-sensitive.`,
+          history: geminiHistory,
+          extraContextText: (body.contextBlocks ?? []).join("\n\n"),
+          enableWebSearch: true,
+        },
+        startIndex
+      );
+
+      for (const attempt of attempts) {
+        await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[attempt.keyIndex] ?? `key-${attempt.keyIndex + 1}`, success: false });
+      }
+
+      if (result.ok) {
+        if (goodKeyIndex !== undefined) {
+          setLastGoodGeminiKeyIndex(goodKeyIndex);
+          await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
+        }
+        await recordEvent({
+          userLabel: session?.email,
+          eventType: "forge_ai.chat",
+          success: true,
+          metadata: { surface: "unified_chat", delegatedTo: "search" },
+        });
+        return NextResponse.json({ output: result.output, sources: result.sources ?? [] });
+      }
+      // Search call failed — fall through to the normal reply below rather
+      // than surfacing a search-specific error for what's still just chat.
+    }
 
     const delegated = await tryDelegateToForge(intent, {
       origin: new URL(request.url).origin,
@@ -301,7 +388,7 @@ export async function POST(request: Request) {
         success: true,
         metadata: { surface: "unified_chat", delegatedTo: intent.kind },
       });
-      return NextResponse.json({ output: delegated });
+      return NextResponse.json({ output: delegated.output, files: delegated.files });
     }
   }
   // -------------------------------------------------------------------------

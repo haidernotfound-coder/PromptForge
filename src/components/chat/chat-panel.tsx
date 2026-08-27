@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Bot, Send, Copy, Loader2, Sparkles, User } from "lucide-react";
+import { Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { AttachmentButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
 import { VoiceInputButton } from "@/components/shared/voice-input-button";
+import { FileCardList } from "@/components/shared/file-card";
 import { makeChatMessage, sendChatMessage, type ChatConversation, type ChatMessage } from "@/lib/chat";
 
 const STARTERS: string[] = [
@@ -17,6 +18,7 @@ const STARTERS: string[] = [
   "Write a function that ",
   "Quiz me on ",
   "Make a slide deck about ",
+  "Search the web for ",
 ];
 
 export function ChatPanel({
@@ -63,7 +65,7 @@ export function ChatPanel({
     attachmentState.clearAttachments();
     setSending(true);
     try {
-      const { output, attachmentContext } = await sendChatMessage(withUser, pendingAttachments);
+      const { output, attachmentContext, files, sources } = await sendChatMessage(withUser, pendingAttachments);
       // Phase 3 — attachment memory: fold any newly extracted document text
       // back onto the user message we just sent, so it's replayed as plain
       // context on later turns even if a later turn is answered by a
@@ -81,7 +83,7 @@ export function ChatPanel({
               : m
           )
         : withUser;
-      onMessagesChange([...withMemory, makeChatMessage("assistant", output)]);
+      onMessagesChange([...withMemory, makeChatMessage("assistant", output, undefined, { files, sources })]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown AI error";
       toast.error(`AI Chat couldn't respond: ${message}`, { duration: 9000 });
@@ -140,7 +142,27 @@ export function ChatPanel({
                 )}
               >
                 {m.role === "assistant" ? (
-                  <MarkdownRenderer content={m.content} />
+                  <>
+                    <MarkdownRenderer content={m.content} />
+                    {m.files && m.files.length > 0 && <FileCardList files={m.files} />}
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-text-faint">Sources</span>
+                        {m.sources.map((s) => (
+                          <a
+                            key={s.uri}
+                            href={s.uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 truncate text-xs text-accent hover:underline"
+                          >
+                            <LinkIcon className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{s.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     {m.content}
