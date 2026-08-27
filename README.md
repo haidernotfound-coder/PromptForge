@@ -753,6 +753,43 @@ Two issues reported after Phase 3 shipped:
 
 ### Phase 5 — Final UI/UX + Testing (this build) ✅
 
+**Post-Phase-5 redesign (this build) ✅**
+
+- **Real app shell instead of a page-in-a-page** — `/chat` is now its own
+  full-height application shell (`src/components/chat/chat-app.tsx`),
+  mounted straight from a new `src/app/chat/layout.tsx` server layout
+  (session/admin/settings fetched once, same pattern `studyforge/layout.tsx`
+  and `dashboard/layout.tsx` already use) instead of being assembled inside
+  a client `page.tsx`. `page.tsx` is now a no-op — every pixel of the route
+  comes from the layout's `<ChatApp />`.
+- **Persistent left sidebar** — a proper `AI Chat` brand mark, the
+  conversation list, and an account footer (avatar/name, live-or-demo
+  status, theme toggle) live in a fixed `w-72` sidebar on desktop and the
+  same content in a slide-over drawer on mobile, matching the
+  sidebar-plus-account-footer shape of every real chat app (and of this
+  app's own dashboard/Forge sidebars) instead of the plain vertical stack
+  the first cut of `/chat` shipped with.
+- **Profile, front and center** — `ChatProfileFooter` puts the existing
+  `DashboardUserMenu` (profile, sign out) at the bottom of the sidebar
+  with the account name and a live/demo status line, so accessing/managing
+  the signed-in account no longer relies solely on the top site navbar.
+- **Cleaner message surface** — bubbles now use fully rounded corners with
+  a single "sharp" corner on the side facing their avatar (a common chat-
+  app tell for "this one's from me/them"), assistant bubbles sit on
+  `surface-raised` with a soft shadow instead of a flat `surface` fill, and
+  the empty state reads like a real assistant's landing screen ("How can I
+  help today?") instead of a muted placeholder paragraph.
+- **Composer redesigned as a single pill** — the attach/voice/textarea/send
+  controls now live inside one rounded, bordered input group that
+  highlights on focus, instead of four separate controls loosely spaced
+  along a row; Send collapses to an icon-only button at every width now
+  that it sits inside that same pill.
+- **Title/status moved to a slim top bar** — the conversation title and
+  Live/Demo badge moved out of a large heading block inside the message
+  area and into a slim header bar (desktop: above the panel; mobile: next
+  to the drawer toggle), freeing the message area to be just messages.
+- `npm install && npm run build` passes cleanly with this change.
+
 - **Land in a conversation, not a placeholder** — `/chat` (`src/app/chat/page.tsx`)
   now spins up a fresh conversation automatically the first time someone
   opens it with no history yet, and again if they delete their last

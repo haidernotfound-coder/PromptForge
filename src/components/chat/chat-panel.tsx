@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { UploadCloud, Bot, Send, Copy, Loader2, Sparkles, User, Link as LinkIcon, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { AttachmentButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
@@ -30,7 +29,6 @@ export function ChatPanel({
 }) {
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
-  const [configured, setConfigured] = React.useState<boolean | null>(null);
   const attachmentState = useAttachments();
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -41,21 +39,6 @@ export function ChatPanel({
   // outer container onto a message bubble or the composer underneath it.
   const dragCounter = React.useRef(0);
   const messages = conversation.messages;
-
-  React.useEffect(() => {
-    let cancelled = false;
-    fetch("/api/chat")
-      .then((res) => (res.ok ? res.json() : { configured: false }))
-      .then((data) => {
-        if (!cancelled) setConfigured(Boolean(data.configured));
-      })
-      .catch(() => {
-        if (!cancelled) setConfigured(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollRef.current;
@@ -186,7 +169,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="relative flex h-[calc(100vh-8.5rem)] flex-col"
+      className="relative flex h-full min-h-0 flex-col"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -199,44 +182,39 @@ export function ChatPanel({
           <p className="text-xs text-text-faint">Images, PDF, DOCX, ZIP, TXT, CSV, code — up to 100 MB each</p>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-accent" />
-            <h1 className="truncate font-display text-2xl font-semibold tracking-tight">{conversation.title}</h1>
-            {configured === false && <Badge variant="brass">Demo mode</Badge>}
-            {configured === true && <Badge variant="success">Live</Badge>}
-          </div>
-          <p className="mt-1 text-sm text-text-muted">One assistant for prompts, code, studying, and slides.</p>
-        </div>
-      </div>
 
-      <div className="relative flex-1 min-h-0">
+      <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
-        className="h-full space-y-4 overflow-y-auto rounded-lg border border-border bg-surface-raised p-4"
+        className="h-full space-y-5 overflow-y-auto px-3 py-5 sm:px-6"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <Bot className="h-10 w-10 text-text-faint" />
-            <p className="text-sm text-text-muted">Ask anything — this chat can help with prompts, code, studying, or slides.</p>
-            <p className="text-xs text-text-faint">Try a starter below to get going.</p>
+          <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-3 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+              <Sparkles className="h-6 w-6" />
+            </span>
+            <h2 className="font-display text-xl font-semibold tracking-tight">How can I help today?</h2>
+            <p className="text-sm text-text-muted">
+              Ask anything — this chat can help with prompts, code, studying, or slides.
+            </p>
           </div>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={cn("flex gap-2.5 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
+              className={cn("flex gap-3 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
             >
               {m.role === "assistant" && (
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
                   <Bot className="h-4 w-4" />
                 </span>
               )}
               <div
                 className={cn(
-                  "group relative max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm leading-relaxed",
-                  m.role === "user" ? "whitespace-pre-wrap bg-accent text-accent-foreground" : "bg-surface text-text"
+                  "group relative max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%]",
+                  m.role === "user"
+                    ? "whitespace-pre-wrap rounded-tr-sm bg-accent text-accent-foreground"
+                    : "rounded-tl-sm bg-surface-raised text-text shadow-sm"
                 )}
               >
                 {m.role === "assistant" ? (
@@ -282,7 +260,7 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={() => copyMessage(m.content)}
-                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 transition-opacity group-hover:flex group-hover:opacity-100"
+                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 shadow-sm transition-opacity group-hover:flex group-hover:opacity-100"
                     aria-label="Copy message"
                   >
                     <Copy className="h-3 w-3" />
@@ -290,7 +268,7 @@ export function ChatPanel({
                 )}
               </div>
               {m.role === "user" && (
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface text-text-muted">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted shadow-sm">
                   <User className="h-4 w-4" />
                 </span>
               )}
@@ -298,11 +276,11 @@ export function ChatPanel({
           ))
         )}
         {sending && (
-          <div className="flex animate-fade-in items-end gap-2.5" role="status" aria-live="polite">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <div className="flex animate-fade-in items-end gap-3" role="status" aria-live="polite">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
               <Bot className="h-4 w-4" />
             </span>
-            <div className="flex items-center gap-1 rounded-lg bg-surface px-3.5 py-3">
+            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-surface-raised px-4 py-3 shadow-sm">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
@@ -323,54 +301,56 @@ export function ChatPanel({
       )}
       </div>
 
-      {messages.length === 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-3">
-          {STARTERS.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              disabled={sending}
-              onClick={() => setInput(prompt)}
-              className="rounded-full border border-border px-2.5 py-1 text-xs text-text-muted transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+      <div className="border-t border-border bg-bg px-3 pb-3 pt-3 sm:px-6">
+        {messages.length === 0 && (
+          <div className="mb-2 flex flex-wrap justify-center gap-1.5">
+            {STARTERS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                disabled={sending}
+                onClick={() => setInput(prompt)}
+                className="rounded-full border border-border px-2.5 py-1 text-xs text-text-muted transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {prompt.trim()}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
+          <AttachmentChips attachments={attachmentState.attachments} onRemove={attachmentState.removeAttachment} disabled={sending} />
+          <div className="flex items-end gap-1.5 rounded-2xl border border-border bg-surface-raised p-1.5 shadow-sm focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/20">
+            <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
+            <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
+              placeholder="Message AI Chat…"
+              rows={1}
+              className="min-h-[36px] max-h-[200px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1.5 py-1.5 shadow-none focus-visible:ring-0"
+              aria-label="Message AI Chat"
+            />
+            <Button
+              onClick={() => void send(input)}
+              disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
+              size="icon"
+              className="h-9 w-9 shrink-0 gap-1.5 rounded-xl"
+              aria-label="Send message"
             >
-              {prompt.trim()}
-            </button>
-          ))}
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+          <p className="hidden text-center text-[11px] text-text-faint sm:block">
+            Enter to send · Shift+Enter for a new line
+          </p>
         </div>
-      )}
-
-      <div className="mt-2 flex flex-col gap-1">
-        <AttachmentChips attachments={attachmentState.attachments} onRemove={attachmentState.removeAttachment} disabled={sending} />
-        <div className="flex items-end gap-2">
-          <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
-          <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send(input);
-              }
-            }}
-            placeholder="Message AI Chat…"
-            rows={1}
-            className="min-h-[44px] max-h-[200px] resize-none overflow-y-auto py-2.5"
-            aria-label="Message AI Chat"
-          />
-          <Button
-            onClick={() => void send(input)}
-            disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
-            className="h-10 shrink-0 gap-1.5"
-          >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            <span className="hidden sm:inline">Send</span>
-          </Button>
-        </div>
-        <p className="hidden text-center text-[11px] text-text-faint sm:block">
-          Enter to send · Shift+Enter for a new line
-        </p>
       </div>
     </div>
   );
