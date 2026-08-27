@@ -50,7 +50,14 @@ interface GroqCallResult {
   status?: number;
 }
 
-async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<GroqCallResult> {
+// Tried in order for each key: gemma2-9b-it has a notably higher free-tier
+// TPM ceiling than gpt-oss-120b, so it's tried first to avoid 413s; if it
+// fails (rate-limited or unusable output) we fall back to gpt-oss-120b on
+// the SAME key before rotating to the next key. This is scoped to PPTForge
+// only — CodeForge/StudyForge are untouched.
+const PPTFORGE_MODELS = ["gemma2-9b-it", "openai/gpt-oss-120b"] as const;
+
+async function callGroqForPlan(apiKey: string, userPrompt: string, model: string): Promise<GroqCallResult> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -58,14 +65,11 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      // llama-3.3-70b-versatile was deprecated by Groq (announced 2026-06-17);
-      // see console.groq.com/docs/deprecations. openai/gpt-oss-120b is Groq's
-      // recommended replacement.
-      model: "openai/gpt-oss-120b",
-      // Bumped from 8000: a full 20-slide deck (PPTFORGE_MAX_SLIDES) with
-      // bullets/tables/charts per slide could exceed 8000 tokens and get
-      // truncated mid-JSON, which parseDeckPlan then rejects as unparsable.
-      max_tokens: 16000,
+      model,
+      // Account TPM limit is 8000 tokens (prompt + completion combined) —
+      // going above this 413s outright, it does not just get truncated.
+      // Keep headroom for the system+user prompt tokens too.
+      max_tokens: 4000,
       temperature: 0.6,
       response_format: { type: "json_object" },
       messages: [
@@ -76,9 +80,13 @@ async function callGroqForPlan(apiKey: string, userPrompt: string): Promise<Groq
   });
 
   if (!response.ok) {
-    console.error("PPTForge Groq API error", response.status, await response.text());
-    if (response.status === 429 || response.status === 401 || response.status === 403) {
-      return { ok: false, exhausted: true };
+    const errText = await response.text();
+    console.error("PPTForge Groq API error", model, response.status, errText);
+    // 429/401/403: this key is genuinely spent/invalid, try the next one.
+    // 413 (request too large / TPM limit) can also vary per-key/org, so
+    // treat it the same way rather than aborting the whole retry loop.
+    if (response.status === 429 || response.status === 401 || response.status === 403 || response.status === 413) {
+      return { ok: false, exhausted: true, status: response.status };
     }
     return { ok: false, exhausted: false, status: response.status };
   }
@@ -281,24 +289,28 @@ export async function POST(request: Request) {
     let lastFailure: { exhausted: boolean; status?: number } | null = null;
     let plan: PptForgeDeckPlan | null = null;
 
-    for (const i of order) {
-      const result = await callGroqForPlan(keys[i], userPrompt);
-      await recordGroqUsage({ pool: "pptforge", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
+    outer: for (const i of order) {
+      for (const model of PPTFORGE_MODELS) {
+        const result = await callGroqForPlan(keys[i], userPrompt, model);
+        await recordGroqUsage({ pool: "pptforge", keyLabel: keyLabels[i] ?? `key-${i + 1}`, success: result.ok });
 
-      if (result.ok && result.output) {
-        plan = parseDeckPlan(result.output, slideCount, topic);
-        if (!plan) {
-          // Valid HTTP response but unusable JSON shape — try the next key
-          // rather than failing outright, since a retry can succeed.
-          lastFailure = { exhausted: false, status: 502 };
-          continue;
+        if (result.ok && result.output) {
+          plan = parseDeckPlan(result.output, slideCount, topic);
+          if (!plan) {
+            // Valid HTTP response but unusable JSON shape — try the next
+            // model/key rather than failing outright.
+            lastFailure = { exhausted: false, status: 502 };
+            continue;
+          }
+          setLastGoodKeyIndex("pptforge", i);
+          break outer;
         }
-        setLastGoodKeyIndex("pptforge", i);
-        break;
-      }
 
-      lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status };
-      if (!result.exhausted) break;
+        lastFailure = result.exhausted ? { exhausted: true } : { exhausted: false, status: result.status };
+        // Rate-limited/invalid on this model — try the next model on the
+        // SAME key before giving up on the key entirely.
+        if (!result.exhausted) break outer;
+      }
     }
 
     if (!plan) {
