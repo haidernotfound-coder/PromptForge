@@ -469,3 +469,152 @@ npm run start   # serve the production build
 - Fonts are self-hosted via `@fontsource` rather than `next/font/google`
   specifically so the project builds in network-restricted environments
   (CI runners, sandboxes) without depending on `fonts.googleapis.com`.
+
+
+
+## Unified AI Chat refactor
+
+The platform is being refactored into one unified, ChatGPT-style AI Chat per
+the plan below. Progress is tracked here; the original brief follows
+unchanged as the working checklist.
+
+| Phase | Name | Status |
+|---|---|---|
+| 1 | Unified AI Chat (interface) | ✅ Complete |
+| 2 | Combine All Forge Capabilities | ⬜ Not started |
+| 3 | Attachment Memory | ⬜ Not started |
+| 4 | Files + Web Search | ⬜ Not started |
+| 5 | Final UI/UX + Testing | ⬜ Not started |
+
+### Phase 1 — Unified AI Chat (this build) ✅
+
+- Added `/chat`, a new top-level protected route with a ChatGPT-style
+  interface: a left sidebar of conversations plus a message panel on the
+  right (mobile gets the same sidebar in a slide-over drawer).
+- **New Chat + persistent history** — `src/lib/chat.ts` stores an array of
+  conversations (id, title, messages, timestamps) in `localStorage`, the
+  same "local chat scratch space" pattern StudyForge's and CodeForge's
+  chat panels already use. Starting a new chat, switching between chats,
+  and reloading the page all work against this store.
+- **Rename / delete** — `ChatSidebar` (`src/components/chat/chat-sidebar.tsx`)
+  gives each conversation a hover menu with inline rename and a delete
+  action gated behind the existing `ConfirmDialog` component. New chats
+  auto-title themselves from the first message (like most chat apps) until
+  the user renames one manually.
+- **Markdown, code blocks, copy, loading state** — `ChatPanel`
+  (`src/components/chat/chat-panel.tsx`) reuses the exact message-list
+  patterns from `StudyForgeChatPanel`: `MarkdownRenderer` for assistant
+  replies (so fenced code blocks render properly), a per-message copy
+  button, and an animated three-dot "typing" indicator while a reply is
+  in flight. No new chat-UI primitives were invented — this is the same
+  layout/styling StudyForge and CodeForge chat already ship.
+- **Attachments + voice** — wired to the existing `useAttachments` /
+  `AttachmentButton` / `AttachmentChips` and `VoiceInputButton` components,
+  unchanged.
+- **Backend** — added `src/app/api/chat/route.ts`. This is intentionally
+  *not* a new provider system: it's Forge AI's own route
+  (`src/app/api/forge-ai/route.ts`) with the `<current_prompt>` framing
+  swapped for a general-purpose system prompt, so it authenticates with
+  the exact same `FORGE_AI_GROQ_API_KEY_1`..`_5` pool and the same shared
+  Gemini attachment pool/fallback logic — no new environment variables,
+  no duplicated key-rotation code. It's gated behind the existing
+  `forgeAiEnabled` / `maintenanceMode` admin settings for the same reason.
+- **Navigation** — the "PPTForge" entry in the main navbar (desktop links,
+  the "Open PPTForge" quick-action button, and the mobile menu) now points
+  to "AI Chat" → `/chat`. PPTForge itself (`/pptforge`, `/products/pptforge`,
+  its settings/history pages, and its API route) is untouched and still
+  fully reachable directly — Phase 2 is what teaches the unified chat to
+  call into it, per the brief ("keep PPTForge functionality internally").
+- `/chat` was added to `middleware.ts`'s protected-path list, same as the
+  other product routes.
+- `npm run build` passes cleanly with this change (verified in this
+  environment — network access allowed a real `npm install` + `npm run
+  build`, unlike some earlier phases).
+
+**Next phase (Phase 2 — Combine All Forge Capabilities):** teach `/api/chat`
+(or a thin layer in front of it) to detect intent — "write some code",
+"quiz me on X", "make a slide deck about Y", "search the web for Z" — and
+delegate to the existing CodeForge/StudyForge/PPTForge modules and web
+search instead of answering everything directly out of one general system
+prompt, without duplicating any of those modules' implementations.
+
+---
+
+### Original brief (working checklist)
+
+Refactor NexPrompt into ONE unified AI Chat, similar to ChatGPT. Do this in 5 phases.
+
+IMPORTANT:
+- Replace the existing PPTForge slot in the main navigation with the new unified AI Chat.
+- Keep PPTForge functionality internally so the unified AI can still generate PPTs.
+- Keep all existing Forge names and branding.
+- Reuse existing code, APIs, components, auth, database, settings, attachments, voice input, and provider/fallback systems wherever possible.
+- DO NOT create new API-key environment variables or duplicate fallback systems.
+- Do NOT rebuild working features.
+- Update README.md after EVERY phase with what was completed and what the next phase is.
+- Do not break existing functionality.
+
+README REQUIREMENT: After completing each individual phase, immediately update README.md before starting the next phase. Mark that phase as COMPLETED, briefly document what was implemented/changed, and update the remaining phase checklist. Do not wait until all phases are finished to update the README.
+
+PHASE 1 — Unified AI Chat
+- Replace PPTForge in the main navigation with AI Chat.
+- Create a clean ChatGPT-style interface.
+- New Chat + persistent chat history/sidebar.
+- Rename/delete chats.
+- Markdown, code blocks, copy, streaming, loading states.
+- Reuse existing chat/database infrastructure.
+
+PHASE 2 — Combine All Forge Capabilities
+Make the unified AI able to use the existing:
+- Normal AI
+- PromptForge
+- CodeForge
+- StudyForge
+- PPTForge
+- Web search
+- Attachments
+- Voice input
+
+The user should talk to ONE AI. Automatically use the appropriate existing capability based on the request.
+Do not duplicate the existing Forge implementations.
+
+PHASE 3 — CRITICAL: Attachment Memory
+Fix the current provider-switching memory problem.
+
+Example:
+User uploads PDF → "summarize this"
+AI summarizes it
+User → "now make a PPT from it"
+The AI MUST still know the PDF and previous work, even if the second message switches from Gemini to Groq.
+
+Do NOT rely on Gemini remembering the conversation.
+Persist relevant attachment references, extracted content, summaries, and previous results in the existing chat/history system so BOTH providers can access the necessary context.
+
+Avoid resending huge files unnecessarily.
+
+Reuse the existing Gemini attachment/document system and Groq fallback system.
+
+PHASE 4 — Files + Web Search
+- Allow the unified AI to create/package and send actual files.
+- Reuse existing PPTForge generation.
+- Support PPTX, ZIP/project files, code files, and supported documents.
+- Display generated files as proper file cards in chat.
+- Add/reuse web search capability.
+- Do not create duplicate file/search systems.
+
+PHASE 5 — Final UI/UX + Testing
+Polish the unified AI into a simple ChatGPT-style experience:
+- Sidebar/history
+- New Chat
+- Clean messages
+- Composer
+- Attachments
+- Voice
+- Settings/profile
+- Responsive/mobile UI
+- Streaming/loading states
+- No unnecessary Forge switching
+
+Test:
+normal chat, history, attachment memory, attachment follow-ups, voice, web search, code debugging, study help, PPT generation, prompt improvement, file generation, provider fallbacks, authentication, refresh/reopen conversations.
+
