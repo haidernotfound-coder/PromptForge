@@ -692,7 +692,16 @@ export function useVoiceSession(): UseVoiceSessionResult {
     }
     const usedKeyIndex: number | undefined = tokenData.keyIndex;
 
-    const ai = new GoogleGenAI({ apiKey: tokenData.token });
+    const ai = new GoogleGenAI({
+      apiKey: tokenData.token,
+      // Ephemeral auth tokens (see api/voice-token/route.ts) are only
+      // supported under the v1alpha API surface -- without this, the
+      // WebSocket handshake still succeeds (onopen fires) but the server
+      // rejects the token a few seconds in once it's actually validated,
+      // which looks like "connecting -> listening -> connecting" on
+      // repeat with no reply ever coming through.
+      httpOptions: { apiVersion: "v1alpha" },
+    });
 
     return ai.live.connect({
       model: tokenData.model,
