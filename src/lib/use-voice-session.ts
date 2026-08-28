@@ -913,9 +913,60 @@ export function useVoiceSession(): UseVoiceSessionResult {
       const processor = inputCtx.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
       processorRef.current = processor;
 
+      // Client-side silence detection: computes RMS amplitude on every
+      // audio callback (~32ms at PROCESSOR_BUFFER_SIZE=512/16kHz) and, on
+      // sustained silence right after real speech, sends audioStreamEnd.
+      // Per Google's docs this is explicitly supported *alongside*
+      // automatic server-side VAD (not instead of it) and "bypasses the
+      // default server-side silence detection delay, returning the
+      // transcript and model response with minimal latency." This is
+      // deliberately NOT the same as disabling automaticActivityDetection
+      // and using activityStart/activityEnd -- that manual-VAD mode has
+      // open, currently-unresolved reports of sessions hanging/timing out
+      // entirely on this model family, so it's not worth the latency win.
+      // Automatic server-side VAD stays on as a fallback in case this
+      // client-side signal is ever missed (e.g. a very quiet trailing
+      // word that never crosses the RMS threshold).
+      const SILENCE_RMS_THRESHOLD = 0.01; // empirical: below typical room-tone/mic-noise floor, above true silence
+      const SILENCE_HANGOVER_MS = 350; // amplitude must stay below threshold this long before declaring "done talking"
+      let hasHeardSpeech = false;
+      let silenceStartedAt: number | null = null;
+      let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
+
       processor.onaudioprocess = (event) => {
         if (stoppedRef.current || !sessionRef.current || mutedRef.current) return;
         const input = event.inputBuffer.getChannelData(0);
+
+        let sumSquares = 0;
+        for (let i = 0; i < input.length; i++) sumSquares += input[i] * input[i];
+        const rms = Math.sqrt(sumSquares / input.length);
+        const now = performance.now();
+
+        if (rms >= SILENCE_RMS_THRESHOLD) {
+          hasHeardSpeech = true;
+          silenceStartedAt = null;
+          streamEndSent = false;
+        } else if (hasHeardSpeech && !streamEndSent) {
+          if (silenceStartedAt === null) silenceStartedAt = now;
+          if (now - silenceStartedAt >= SILENCE_HANGOVER_MS) {
+            streamEndSent = true;
+            hasHeardSpeech = false;
+            try {
+              sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+            } catch {
+              // Session may have just closed -- nothing more to signal.
+            }
+            // The stream is considered ended as of this callback -- skip
+            // sending this (silent) chunk as audio too. The client can
+            // reopen the stream by sending an audio message again the
+            // moment real speech resumes (per audioStreamEnd's own
+            // documented contract), which the branch above already does
+            // naturally on the very next callback that crosses the RMS
+            // threshold.
+            return;
+          }
+        }
+
         const resampled = downsampleTo16k(input, inputCtx.sampleRate);
         const pcm16 = floatTo16BitPCM(resampled);
         const base64 = int16ToBase64(pcm16);
