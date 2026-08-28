@@ -4,10 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { Menu, MessagesSquare, TriangleAlert, AudioLines } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { DashboardUserMenu } from "@/components/dashboard/user-menu";
 import * as Dialog from "@radix-ui/react-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ChatPanel } from "@/components/chat/chat-panel";
@@ -32,8 +32,11 @@ import type { AppSession } from "@/lib/session";
  *  surface instead of a generic panel bolted onto the app. */
 function ChatBrand() {
   return (
-    <Link href="/" className="flex items-center gap-2 px-1 font-display text-[15px] font-semibold tracking-tight">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-accent text-accent-foreground shadow-soft">
+    <Link
+      href="/"
+      className="flex items-center gap-2 px-1 pb-3 font-display text-[15px] font-semibold tracking-tight"
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm">
         <MessagesSquare className="h-3.5 w-3.5" />
       </span>
       AI Chat
@@ -43,15 +46,14 @@ function ChatBrand() {
 
 /** Pinned account row at the bottom of the sidebar — avatar/name/email via
  *  the existing DashboardUserMenu (profile, sign out) plus a theme toggle,
- *  kept compact (single row, small type) so it reads as a footer rather
- *  than another full-height sidebar section. */
+ *  so the whole account surface is reachable without leaving /chat. */
 function ChatProfileFooter({ session, configured }: { session: AppSession; configured: boolean | null }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-surface">
+    <div className="flex items-center justify-between gap-1.5 rounded-lg border border-border bg-surface-raised/60 px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <DashboardUserMenu session={session} />
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-xs font-medium text-text">{session.name}</p>
+          <p className="truncate text-[13px] font-medium text-text">{session.name}</p>
           <p className="truncate text-[11px] text-text-faint">
             {configured === false ? "Demo mode" : configured === true ? "Live" : "\u00A0"}
           </p>
@@ -257,89 +259,87 @@ export function ChatApp({
     </>
   );
 
-  const modeSwitcher = (
-    <div className="flex items-center gap-0.5 rounded-full border border-border bg-surface p-0.5">
-      <button
-        type="button"
-        onClick={() => handleTabChange("chat")}
-        aria-pressed={tab === "chat"}
+  const modeTabs = (size: "sm" | "md" = "md") => (
+    <Tabs value={tab} onValueChange={(v) => handleTabChange(v as "chat" | "voice")}>
+      <TabsList
         className={cn(
-          "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-          tab === "chat" ? "bg-surface-raised text-text shadow-soft" : "text-text-faint hover:text-text-muted"
+          "gap-0.5 rounded-full border-transparent bg-surface p-0.5",
+          size === "sm" ? "h-8" : "h-8"
         )}
       >
-        <MessagesSquare className="h-3.5 w-3.5" /> Chats
-      </button>
-      <button
-        type="button"
-        onClick={() => handleTabChange("voice")}
-        aria-pressed={tab === "voice"}
-        className={cn(
-          "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-          tab === "voice" ? "bg-surface-raised text-text shadow-soft" : "text-text-faint hover:text-text-muted"
-        )}
-      >
-        <AudioLines className="h-3.5 w-3.5" /> Voice
-      </button>
-    </div>
+        <TabsTrigger
+          value="chat"
+          className="gap-1.5 rounded-full px-3 py-1 text-xs font-medium data-[state=active]:shadow-none data-[state=active]:bg-accent-soft data-[state=active]:text-accent"
+        >
+          <MessagesSquare className="h-3.5 w-3.5" /> Chats
+        </TabsTrigger>
+        <TabsTrigger
+          value="voice"
+          className="gap-1.5 rounded-full px-3 py-1 text-xs font-medium data-[state=active]:shadow-none data-[state=active]:bg-accent-soft data-[state=active]:text-accent"
+        >
+          <AudioLines className="h-3.5 w-3.5" /> Voice
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 
-  const statusBadge =
-    tab === "chat" && configured === false ? (
-      <Badge variant="brass">Demo</Badge>
-    ) : tab === "chat" && configured === true ? (
-      <Badge variant="success">Live</Badge>
-    ) : null;
-
   return (
-    <div className="flex h-[calc(100vh-4rem)] min-h-0 min-w-0 overflow-hidden">
-      <aside className="hidden md:flex w-64 shrink-0 flex-col gap-3 border-r border-border bg-surface-raised/40 p-3">
+    <div className="flex h-[calc(100vh-4rem)] min-h-0 max-w-full overflow-hidden">
+      <aside className="hidden md:flex w-60 shrink-0 flex-col gap-3 border-r border-border bg-surface-raised/40 px-3 pt-3 pb-3">
         {sidebarContent}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5 md:hidden">
-          <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
-            <Dialog.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Open chat history"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
-              >
-                <Menu className="h-[18px] w-[18px]" />
-              </button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
-              <Dialog.Content className="fixed left-0 top-0 z-50 flex h-full w-72 max-w-[85vw] flex-col gap-3 border-r border-border bg-surface-raised p-3">
-                <Dialog.Title className="sr-only">Chat history</Dialog.Title>
-                {sidebarContent}
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
-          <span className="min-w-0 flex-1 truncate text-center text-sm font-medium text-text">
-            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
-          </span>
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center">{statusBadge}</span>
-        </header>
-
-        {/* Mobile mode switcher gets its own row — the header row above is
-            already tight with the hamburger + title + badge. */}
-        <div className="flex shrink-0 items-center justify-center border-b border-border py-2 md:hidden">
-          {modeSwitcher}
-        </div>
-
-        <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 md:flex">
-          <span className="min-w-0 truncate text-sm font-medium text-text-muted">
-            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
-          </span>
-          <div className="flex shrink-0 items-center gap-2.5">
-            {statusBadge}
-            {modeSwitcher}
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 md:hidden">
+          <div className="flex min-w-0 items-center gap-1">
+            <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+              <Dialog.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label="Open chat history"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface hover:text-text"
+                >
+                  <Menu className="h-[18px] w-[18px]" />
+                </button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
+                <Dialog.Content className="fixed left-0 top-0 z-50 flex h-full w-64 flex-col gap-3 border-r border-border bg-surface-raised px-3 pt-3 pb-3">
+                  <Dialog.Title className="sr-only">Chat history</Dialog.Title>
+                  {sidebarContent}
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+            <span className="truncate text-sm font-medium text-text">
+              {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {tab === "chat" && configured === false && <Badge variant="brass">Demo</Badge>}
+            {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+            {tab === "chat" && configured === null && <span className="h-5 w-12" />}
           </div>
         </header>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 md:flex">
+          <span className="truncate text-sm font-medium text-text-muted">
+            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
+          </span>
+          <div className="flex items-center gap-2.5">
+            {tab === "chat" && configured === false && <Badge variant="brass">Demo mode</Badge>}
+            {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+            {modeTabs()}
+          </div>
+        </header>
+
+        {/* Mobile mode switcher — the desktop header above has room for
+            tabs inline; on mobile it's already tight with the hamburger +
+            title + badge, so the switcher gets its own row. */}
+        <div className="flex shrink-0 items-center justify-center border-b border-border py-1.5 md:hidden">
+          {modeTabs("sm")}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-hidden">
           {tab === "voice" ? (
             !hydrated || !active ? null : (
               <VoicePanel
@@ -360,9 +360,13 @@ export function ChatApp({
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <p className="text-sm text-text-muted">Start a new conversation to begin.</p>
-              <Button onClick={handleNew} size="sm">
+              <button
+                type="button"
+                onClick={handleNew}
+                className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm hover:opacity-90"
+              >
                 New chat
-              </Button>
+              </button>
             </div>
           )}
         </div>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Paperclip, FileText, FileImage, FileCode, X, Loader2 } from "lucide-react";
+import { Paperclip, Camera, FileText, FileImage, FileCode, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -119,6 +119,51 @@ export function AttachmentButton({
         className={cn("h-9 w-9 shrink-0", className)}
       >
         <Paperclip className="h-4 w-4" />
+      </Button>
+    </>
+  );
+}
+
+/** Camera-capture entry point — reuses the same file pipeline as
+ *  `AttachmentButton` (validation, reading, chips) but opens straight to
+ *  the device camera via `capture="environment"` instead of the general
+ *  file picker, so it can sit next to it in the composer as its own
+ *  affordance. Same guarantees as the attach flow — no new upload path. */
+export function CameraButton({
+  onFiles,
+  disabled,
+  className,
+}: {
+  onFiles: (files: FileList) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) onFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+        aria-label="Use camera"
+        title="Take a photo to attach"
+        className={cn("h-9 w-9 shrink-0", className)}
+      >
+        <Camera className="h-4 w-4" />
       </Button>
     </>
   );

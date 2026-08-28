@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
-import { AttachmentButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
+import { AttachmentButton, CameraButton, AttachmentChips, useAttachments } from "@/components/shared/attachment-bar";
 import { VoiceInputButton } from "@/components/shared/voice-input-button";
 import { FileCardList } from "@/components/shared/file-card";
 import { makeChatMessage, sendChatMessage, type ChatConversation, type ChatMessage } from "@/lib/chat";
@@ -169,7 +169,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+      className="relative flex h-full min-h-0 max-w-full flex-col overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -183,43 +183,63 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="relative min-h-0 min-w-0 flex-1">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
       <div
         ref={scrollRef}
-        className="h-full min-w-0 space-y-5 overflow-x-hidden overflow-y-auto px-3 py-6 sm:px-6"
+        className="h-full space-y-5 overflow-y-auto overflow-x-hidden px-3 py-5 sm:px-6"
       >
         {messages.length === 0 ? (
-          <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-3 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-accent text-accent-foreground shadow-glow-sm">
-              <Sparkles className="h-6 w-6" />
+          <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-4 text-center">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+              <Sparkles className="h-5 w-5" />
             </span>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">How can I help today?</h2>
-            <p className="max-w-sm text-sm text-text-muted">
-              Ask anything — this chat can help with prompts, code, studying, or slides.
-            </p>
+            <div className="space-y-1.5">
+              <h2 className="font-display text-lg font-semibold tracking-tight sm:text-xl">
+                How can I help today?
+              </h2>
+              <p className="text-sm text-text-muted">
+                Ask anything — this chat can help with prompts, code, studying, or slides.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+              {STARTERS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  disabled={sending}
+                  onClick={() => {
+                    setInput(prompt);
+                    textareaRef.current?.focus();
+                  }}
+                  className="rounded-full border border-border bg-surface-raised px-3 py-1.5 text-xs text-text-muted shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {prompt.trim()}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={cn("flex min-w-0 gap-3 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
+              className={cn("flex gap-3 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
             >
               {m.role === "assistant" && (
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-accent text-accent-foreground shadow-soft">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
                   <Bot className="h-4 w-4" />
                 </span>
               )}
               <div
                 className={cn(
-                  "group relative min-w-0 max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%]",
+                  "group relative min-w-0 max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%]",
                   m.role === "user"
-                    ? "whitespace-pre-wrap break-words rounded-tr-sm bg-gradient-accent text-accent-foreground shadow-soft"
-                    : "overflow-hidden rounded-tl-sm bg-surface-raised text-text shadow-soft"
+                    ? "whitespace-pre-wrap rounded-tr-sm bg-accent text-accent-foreground"
+                    : "rounded-tl-sm bg-surface-raised text-text shadow-sm"
                 )}
               >
                 {m.role === "assistant" ? (
                   <>
-                    <MarkdownRenderer content={m.content} className="min-w-0" />
+                    <MarkdownRenderer content={m.content} />
                     {m.files && m.files.length > 0 && <FileCardList files={m.files} />}
                     {m.sources && m.sources.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
@@ -260,7 +280,7 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={() => copyMessage(m.content)}
-                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 shadow-soft transition-opacity group-hover:flex group-hover:opacity-100"
+                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 shadow-sm transition-opacity group-hover:flex group-hover:opacity-100"
                     aria-label="Copy message"
                   >
                     <Copy className="h-3 w-3" />
@@ -268,7 +288,7 @@ export function ChatPanel({
                 )}
               </div>
               {m.role === "user" && (
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted shadow-soft">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted shadow-sm">
                   <User className="h-4 w-4" />
                 </span>
               )}
@@ -277,10 +297,10 @@ export function ChatPanel({
         )}
         {sending && (
           <div className="flex animate-fade-in items-end gap-3" role="status" aria-live="polite">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-accent text-accent-foreground shadow-soft">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
               <Bot className="h-4 w-4" />
             </span>
-            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-surface-raised px-4 py-3 shadow-soft">
+            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-surface-raised px-4 py-3 shadow-sm">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
@@ -301,31 +321,16 @@ export function ChatPanel({
       )}
       </div>
 
-      <div className="shrink-0 border-t border-border bg-bg/95 px-3 pb-3 pt-2.5 backdrop-blur-sm sm:px-6 sm:pb-4">
-        {messages.length === 0 && (
-          <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap justify-center gap-1.5">
-            {STARTERS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                disabled={sending}
-                onClick={() => setInput(prompt)}
-                className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-accent/30 hover:bg-accent-soft hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {prompt.trim()}
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="shrink-0 bg-bg px-3 pb-3 pt-2 sm:px-6">
         <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-1.5">
           <AttachmentChips attachments={attachmentState.attachments} onRemove={attachmentState.removeAttachment} disabled={sending} />
-          <div className="flex items-end gap-1 rounded-2xl border border-border bg-surface-raised p-1.5 shadow-soft transition-shadow focus-within:border-accent/50 focus-within:shadow-glow-sm">
+          <div className="flex items-end gap-1 rounded-[26px] border border-border bg-surface-raised p-1.5 shadow-md transition-colors focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/15">
             <div className="flex shrink-0 items-center gap-0.5">
-              <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} className="rounded-xl" />
-              <VoiceInputButton
-                onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))}
+              <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} className="rounded-full" />
+              <CameraButton
+                onFiles={(files) => void attachmentState.addFiles(files)}
                 disabled={sending}
-                className="rounded-xl"
+                className="rounded-full md:hidden"
               />
             </div>
             <Textarea
@@ -340,18 +345,25 @@ export function ChatPanel({
               }}
               placeholder="Message AI Chat…"
               rows={1}
-              className="min-h-[36px] max-h-[200px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1.5 py-1.5 shadow-none focus-visible:ring-0"
+              className="min-h-[36px] max-h-[200px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-sm shadow-none focus-visible:ring-0"
               aria-label="Message AI Chat"
             />
-            <Button
-              onClick={() => void send(input)}
-              disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
-              size="icon"
-              className="h-9 w-9 shrink-0 gap-1.5 rounded-xl"
-              aria-label="Send message"
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <VoiceInputButton
+                onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))}
+                disabled={sending}
+                className="rounded-full"
+              />
+              <Button
+                onClick={() => void send(input)}
+                disabled={sending || (!input.trim() && attachmentState.attachments.length === 0)}
+                size="icon"
+                className="h-9 w-9 shrink-0 gap-1.5 rounded-full"
+                aria-label="Send message"
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
           <p className="hidden text-center text-[11px] text-text-faint sm:block">
             Enter to send · Shift+Enter for a new line
