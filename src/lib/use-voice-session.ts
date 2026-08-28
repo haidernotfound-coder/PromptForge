@@ -733,6 +733,15 @@ export function useVoiceSession(): UseVoiceSessionResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleServerMessage]);
 
+  // Guards against onerror and onclose both firing for the same
+  // WebSocket failure (a very common pattern -- onerror fires, then
+  // onclose fires immediately after for the same underlying rejection)
+  // and each independently calling handleDisconnect. Without this, two
+  // concurrent retry chains can run at once, each with its own backoff
+  // delay, making the *combined* stream of connect attempts look like it
+  // has no backoff at all even though each individual chain does.
+  const handlingDisconnectRef = React.useRef(false);
+
   // Shared onerror/onclose handler: retries the connection (new token,
   // likely a new key) on anything that looks like a quota/transient
   // rejection, up to MAX_CONNECT_RETRIES; otherwise surfaces the error as
@@ -740,6 +749,17 @@ export function useVoiceSession(): UseVoiceSessionResult {
   // after connectSession while still being referenced from inside it via
   // closure -- both are stable for the lifetime of a single start() call.
   async function handleDisconnect(reasonOrMessage: string | undefined) {
+    if (stoppedRef.current) return;
+    if (handlingDisconnectRef.current) return;
+    handlingDisconnectRef.current = true;
+    try {
+      await handleDisconnectInner(reasonOrMessage);
+    } finally {
+      handlingDisconnectRef.current = false;
+    }
+  }
+
+  async function handleDisconnectInner(reasonOrMessage: string | undefined) {
     if (stoppedRef.current) return;
     if (openResetTimerRef.current) {
       clearTimeout(openResetTimerRef.current);
@@ -780,9 +800,12 @@ export function useVoiceSession(): UseVoiceSessionResult {
       // fetch to /api/voice-token failed, or every key in the pool is
       // exhausted) -- treat it as one more quota-like failure and either
       // retry again or give up per the same cap, rather than a distinct
-      // error path.
+      // error path. Calls the inner function directly (not the guarded
+      // wrapper) since we're already inside a single handleDisconnect
+      // invocation -- this is a sequential continuation of it, not a
+      // second concurrent event.
       const message = err instanceof Error ? err.message : "Couldn't start Voice Mode.";
-      await handleDisconnect(message);
+      await handleDisconnectInner(message);
     }
   }
 
