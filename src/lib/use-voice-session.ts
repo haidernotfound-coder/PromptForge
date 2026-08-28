@@ -617,7 +617,15 @@ export function useVoiceSession(): UseVoiceSessionResult {
       micStreamRef.current = stream;
       setMicGranted(true);
 
-      const ai = new GoogleGenAI({ apiKey: tokenData.token });
+      const ai = new GoogleGenAI({
+        apiKey: tokenData.token,
+        // Ephemeral auth tokens (see api/voice-token/route.ts) are only
+        // supported under the v1alpha API surface -- without this, the
+        // WebSocket handshake still succeeds (onopen fires) but the server
+        // rejects the token a few seconds in once it's actually validated,
+        // which looks like the call silently hanging up on its own.
+        httpOptions: { apiVersion: "v1alpha" },
+      });
 
       const session = await ai.live.connect({
         model: tokenData.model,
@@ -648,9 +656,15 @@ export function useVoiceSession(): UseVoiceSessionResult {
             setError(e.message || "Voice connection error");
             setState("error");
           },
-          onclose: () => {
+          onclose: (e) => {
             if (stoppedRef.current) return;
-            setState((s) => (s === "error" ? s : "idle"));
+            // Reaching here means the server closed the socket without the
+            // user hanging up (stop() always sets stoppedRef first) -- show
+            // it as an error instead of quietly resetting to idle, so a
+            // server-side rejection (bad token, quota, etc.) is visible
+            // instead of looking like the call just silently ended.
+            setError(e?.reason || "Voice call ended unexpectedly.");
+            setState("error");
           },
         },
       });

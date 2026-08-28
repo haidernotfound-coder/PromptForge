@@ -87,7 +87,13 @@ export async function POST() {
   let lastDetail = "Unknown error";
   for (const i of order) {
     try {
-      const client = new GoogleGenAI({ apiKey: keys[i] });
+      const client = new GoogleGenAI({
+        apiKey: keys[i],
+        // authTokens.create (ephemeral tokens for the Live API) is a
+        // v1alpha-only feature -- see use-voice-session.ts's connect call,
+        // which must match this for the minted token to validate.
+        httpOptions: { apiVersion: "v1alpha" },
+      });
       const token = await client.authTokens.create({
         config: {
           uses: 1,
