@@ -35,7 +35,16 @@ export const runtime = "nodejs";
 // Tokens are locked to this model/config server-side (liveConnectConstraints)
 // so the client can never renegotiate a different, unintended configuration
 // even if the token value were somehow tampered with.
-const VOICE_MODEL = "gemini-3.1-flash-live-preview";
+// Confirmed via GET /v1alpha/models against the actual configured keys:
+// gemini-3.1-flash-live-preview does not appear in the model list at all
+// for these projects (while gemini-2.5-flash-native-audio-* models do) --
+// that's what was producing the persistent 429s regardless of key
+// rotation working correctly. gemini-2.5-flash-native-audio-latest is the
+// "latest" alias for the older, confirmed-available native-audio Live
+// model, and is what free-tier voice mode should target until 3.1 Flash
+// Live is actually available to these projects. If it later shows up in
+// GET /v1alpha/models, swap this back.
+const VOICE_MODEL = "gemini-2.5-flash-native-audio-latest";
 
 // A session must be *started* within this window of minting the token.
 // Kept short since the token is normally consumed within a second or two
@@ -46,6 +55,20 @@ const NEW_SESSION_EXPIRE_MINUTES = 2;
 // individual call beyond this, but a fresh token is needed for a new call
 // after this window).
 const SESSION_EXPIRE_MINUTES = 30;
+
+// 401/403 are auth/config problems (bad key, API not enabled for that
+// project, billing not set up, key restricted to other APIs) -- NOT
+// quota. They're still worth moving on to the next key for (this key is
+// broken, try another), but they must not be reported to the user as
+// "rate limited": that hides a config mistake behind a message telling
+// the person to just wait, when actually the key needs to be fixed.
+function isAuthOrConfigError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 403);
+}
+
+function isQuotaError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429;
+}
 
 function isRetryableTokenError(err: unknown): boolean {
   if (err instanceof ApiError) {
@@ -115,6 +138,14 @@ export async function POST(request: Request) {
   const newSessionExpireTime = new Date(now + NEW_SESSION_EXPIRE_MINUTES * 60 * 1000).toISOString();
 
   let lastDetail = "Unknown error";
+  // Tracks *why* keys failed across this pass so the final error message
+  // reflects reality: auth/config problems (bad key, API not enabled,
+  // billing missing) look identical to quota exhaustion from the outer
+  // retry loop's perspective, but they need a completely different fix
+  // and telling the person to "try again shortly" for a config mistake
+  // just wastes their time.
+  let anyAuthOrConfigFailure = false;
+  let anyQuotaFailure = false;
   for (const i of order) {
     try {
       const client = new GoogleGenAI({
@@ -183,12 +214,24 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error("Gemini Live ephemeral token error", err);
       lastDetail = err instanceof Error ? err.message.slice(0, 300) : "Unknown error";
+      if (isAuthOrConfigError(err)) anyAuthOrConfigFailure = true;
+      if (isQuotaError(err)) anyQuotaFailure = true;
       if (!isRetryableTokenError(err)) break;
     }
   }
 
-  return NextResponse.json(
-    { error: "Couldn't start Voice Mode right now. " + lastDetail },
-    { status: 502 }
-  );
+  // Every key in the pool failed. Quota exhaustion and "this model isn't
+  // actually available on your tier/project" both surface from Google as
+  // 429 RESOURCE_EXHAUSTED, but they need completely different fixes --
+  // waiting does nothing for the latter. If literally every key failed
+  // with the same 429 and zero of them ever got past minting, that's the
+  // classic signature of a preview/Live model not being enabled for a
+  // free-tier project rather than real per-key usage exhaustion (real
+  // exhaustion usually staggers across keys created at different times).
+  const likelyTierOrEligibilityIssue = anyQuotaFailure && !anyAuthOrConfigFailure;
+  const message = likelyTierOrEligibilityIssue
+    ? `Voice Mode couldn't get a session on any configured key (${VOICE_MODEL}). If your Gemini API keys are on the free tier, check that this model actually appears in GET /v1alpha/models for your key -- if it's missing there, that confirms an eligibility/availability issue rather than real quota use, and switching VOICE_MODEL to a model that does appear in that list is the fix (not waiting for a daily reset). Raw error: ${lastDetail}`
+    : "Couldn't start Voice Mode right now. " + lastDetail;
+
+  return NextResponse.json({ error: message }, { status: 502 });
 }
