@@ -258,6 +258,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
   // playAudioChunk. Reset alongside currentModelTurnIdRef wherever a
   // turn ends or is interrupted.
   const audioStartedForTurnRef = React.useRef(false);
+  // Consecutive audio-chunk send failures, used only to throttle the new
+  // diagnostic logging above (log once per streak, not once per ~32ms
+  // chunk) -- see that call site for why this instrumentation exists.
+  const audioSendFailureStreakRef = React.useRef(0);
   const stoppedRef = React.useRef(false);
 
   // How many times start() has retried the *connection* itself (fresh
@@ -829,6 +833,18 @@ export function useVoiceSession(): UseVoiceSessionResult {
         },
         onmessage: (message: LiveServerMessage) => {
           if (stoppedRef.current) return;
+          // Temporary broad instrumentation: logs the shape of every raw
+          // message the server sends, not just the fields
+          // handleServerMessage currently parses (modelTurn, transcriptions,
+          // turnComplete, etc). Needed because prior logs showed many
+          // audioStreamEnd calls with no visible response at all for
+          // several turns in a row, and there's no way to tell from the
+          // existing logs alone whether the server is truly silent on
+          // those turns or sending back something (setupComplete,
+          // usageMetadata, an empty serverContent, goAway, etc.) that the
+          // current handler just doesn't log. Remove once the cause of
+          // the multi-turn silence is confirmed.
+          console.log(`[VoiceMode timing] RAW onmessage @ ${performance.now().toFixed(0)}ms:`, JSON.stringify(message).slice(0, 500));
           handleServerMessage(message);
         },
         onerror: (e) => {
@@ -1048,8 +1064,16 @@ export function useVoiceSession(): UseVoiceSessionResult {
             try {
               sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
               console.log(`[VoiceMode timing] audioStreamEnd sent @ ${performance.now().toFixed(0)}ms`);
-            } catch {
-              // Session may have just closed -- nothing more to signal.
+            } catch (err) {
+              // Was previously a silent no-op comment ("session may have
+              // just closed") -- logging now because prior sessions
+              // showed many onset/audioStreamEnd pairs with zero server
+              // response for many turns in a row, and a send that throws
+              // here would look IDENTICAL in the logs to one that
+              // succeeded but the server chose not to respond to (the
+              // log line above still says "sent" either way). Needed to
+              // tell those two cases apart.
+              console.error(`[VoiceMode timing] audioStreamEnd send FAILED @ ${performance.now().toFixed(0)}ms`, err);
             }
             // Stream is considered ended as of this callback -- skip
             // sending this (silent) chunk too. Speech resuming crosses
@@ -1070,10 +1094,20 @@ export function useVoiceSession(): UseVoiceSessionResult {
           sessionRef.current.sendRealtimeInput({
             audio: { data: base64, mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}` },
           });
-        } catch {
-          // Session may have just closed between the check above and
-          // this call -- drop the chunk rather than throw from inside
-          // the audio callback.
+          audioSendFailureStreakRef.current = 0;
+        } catch (err) {
+          // Was previously a fully silent no-op. This path fires every
+          // ~32ms so per-failure logging would flood the console, but a
+          // SUSTAINED run of failures (as opposed to one-off drops
+          // during a legitimate reconnect) would mean audio is silently
+          // not reaching the server at all for that stretch -- which
+          // would look, in every other log line, exactly like "sent
+          // fine, server just didn't reply." Logs once per streak
+          // instead of once per chunk.
+          audioSendFailureStreakRef.current += 1;
+          if (audioSendFailureStreakRef.current === 1 || audioSendFailureStreakRef.current % 50 === 0) {
+            console.error(`[VoiceMode timing] audio chunk send FAILED (streak: ${audioSendFailureStreakRef.current}) @ ${performance.now().toFixed(0)}ms`, err);
+          }
         }
       };
 
