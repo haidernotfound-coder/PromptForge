@@ -753,9 +753,20 @@ export function useVoiceSession(): UseVoiceSessionResult {
       sessionRef.current = null;
       return;
     }
+    // Backoff before retrying. Without this, a real per-minute rate limit
+    // gets hammered with a fresh connect the instant the previous one is
+    // rejected -- which can itself look like abusive traffic to the
+    // limiter and keep every key looking "exhausted" even when the
+    // underlying quota would have recovered within a second or two.
+    // Exponential with a little jitter so a burst of users hitting the
+    // same limit at once don't all retry in lockstep.
+    const attempt = connectRetriesRef.current; // 0 on first retry
+    const backoffMs = Math.min(1000 * 2 ** attempt, 15000) + Math.floor(Math.random() * 300);
     connectRetriesRef.current += 1;
     sessionRef.current = null;
     setState("connecting");
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    if (stoppedRef.current) return;
     try {
       const session = await connectSession();
       if (stoppedRef.current) {
