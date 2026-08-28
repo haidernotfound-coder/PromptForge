@@ -161,7 +161,19 @@ export async function POST(request: Request) {
         },
       });
 
-      setLastGoodGeminiVoiceKeyIndex(i);
+      // Advance the shared cursor to the *next* key, not back to the one
+      // that just minted. Minting (authTokens.create) almost always
+      // succeeds even for a key whose Live-session quota is actually
+      // exhausted -- that's only discovered later, once the client tries
+      // to open the WebSocket session (see use-voice-session.ts's
+      // excludeKeyIndices retry). If we pinned the cursor to `i` here,
+      // every subsequent call -- from every user, since this cursor is
+      // shared server-wide -- would start the scan at the same key again,
+      // hand it out again, and just keep re-discovering the same quota
+      // failure at connect time instead of ever reaching a fresh key.
+      // Moving the cursor forward regardless of mint outcome makes the
+      // pool actually round-robin across calls.
+      setLastGoodGeminiVoiceKeyIndex((i + 1) % keys.length);
       return NextResponse.json({
         token: token.name,
         model: VOICE_MODEL,
