@@ -574,6 +574,22 @@ export function useVoiceSession(): UseVoiceSessionResult {
     source.connect(ctx.destination);
 
     const startAt = Math.max(playCursorRef.current, ctx.currentTime);
+    if (isFirstChunkOfTurn) {
+      // Direct measurement, not inference: how far in the future (in ms
+      // of AudioContext time, which runs independently of
+      // performance.now() but at the same rate) this turn's first chunk
+      // is actually scheduled to start relative to ctx.currentTime right
+      // now. If the playCursorRef-drift theory is right, this should be
+      // ~0ms after the resync fix and would have been large/growing
+      // turn-over-turn before it. If this stays near 0 and the person
+      // still hears/reports a delay, the drift theory is ruled out and
+      // the real cause is upstream of playback scheduling entirely (the
+      // network/model-generation latency measured by the existing
+      // "first model audio chunk received" log, which is a separate,
+      // already-confirmed source of the delay this fix was never meant
+      // to address).
+      console.log(`[VoiceMode timing] first chunk of turn scheduled ${((startAt - ctx.currentTime) * 1000).toFixed(0)}ms ahead of real time (ctx.currentTime=${ctx.currentTime.toFixed(3)}s) @ ${performance.now().toFixed(0)}ms`);
+    }
     source.start(startAt);
     playCursorRef.current = startAt + buffer.duration;
 
