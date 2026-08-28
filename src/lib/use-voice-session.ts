@@ -254,6 +254,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
   // a row; a handful of tries is enough to skip past a couple of
   // exhausted keys without the user waiting too long for an error.
   const MAX_CONNECT_RETRIES = 6;
+  // A session must stay open this long past onopen before we trust it
+  // enough to reset the retry counter. Without this delay, a key that
+  // passes the WebSocket handshake but then gets killed by server-side
+  // quota validation a moment later would refill the retry budget on
+  // every single attempt -- exactly the "connecting -> listening ->
+  // connecting" loop this guards against.
+  const OPEN_STABLE_RESET_MS = 4000;
+  const openResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function isQuotaLikeCloseOrError(reasonOrMessage: string | undefined): boolean {
     if (!reasonOrMessage) return false;
@@ -315,6 +323,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
   const stop = React.useCallback(() => {
     stoppedRef.current = true;
+    if (openResetTimerRef.current) {
+      clearTimeout(openResetTimerRef.current);
+      openResetTimerRef.current = null;
+    }
     sessionRef.current?.close();
     sessionRef.current = null;
     cleanupAudioIO();
@@ -658,12 +670,23 @@ export function useVoiceSession(): UseVoiceSessionResult {
       callbacks: {
         onopen: () => {
           if (stoppedRef.current) return;
-          // A successful handshake means this key/token is actually good
-          // (not just mintable) -- reset the retry counter so a later,
-          // unrelated disconnect during the same call starts its own
-          // fresh run of retries rather than inheriting this one's count.
-          connectRetriesRef.current = 0;
+          // NOTE: deliberately NOT resetting connectRetriesRef here.
+          // onopen only means the WebSocket handshake succeeded -- Gemini
+          // Live can still reject the session a few seconds later once it
+          // actually validates quota server-side, which looks exactly
+          // like a fresh "connecting -> listening -> connecting" cycle.
+          // Resetting the counter on every onopen let a fully-exhausted
+          // key pool retry forever (each attempt got just far enough to
+          // hit onopen before being killed, refilling the budget every
+          // time) instead of ever reaching MAX_CONNECT_RETRIES and
+          // surfacing an error. The counter now only resets in start()
+          // for a brand new call, plus once via delayedResetTimer below
+          // after a session has stayed open long enough to trust it.
           setState("listening");
+          if (openResetTimerRef.current) clearTimeout(openResetTimerRef.current);
+          openResetTimerRef.current = setTimeout(() => {
+            if (!stoppedRef.current) connectRetriesRef.current = 0;
+          }, OPEN_STABLE_RESET_MS);
         },
         onmessage: (message: LiveServerMessage) => {
           if (stoppedRef.current) return;
@@ -692,6 +715,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
   // closure -- both are stable for the lifetime of a single start() call.
   async function handleDisconnect(reasonOrMessage: string | undefined) {
     if (stoppedRef.current) return;
+    if (openResetTimerRef.current) {
+      clearTimeout(openResetTimerRef.current);
+      openResetTimerRef.current = null;
+    }
     const canRetry =
       connectRetriesRef.current < MAX_CONNECT_RETRIES && isQuotaLikeCloseOrError(reasonOrMessage);
     if (!canRetry) {
@@ -813,6 +840,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
   React.useEffect(() => {
     return () => {
       stoppedRef.current = true;
+      if (openResetTimerRef.current) clearTimeout(openResetTimerRef.current);
       sessionRef.current?.close();
       cleanupAudioIO();
     };
