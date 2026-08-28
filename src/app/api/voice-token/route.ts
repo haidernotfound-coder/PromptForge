@@ -60,7 +60,7 @@ export const runtime = "nodejs";
 // availability were confirmed above); if every key 429s specifically on
 // mint or connect for this model, that confirms it isn't enabled here
 // yet and -latest is the fallback to revert to.
-const VOICE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+const VOICE_MODEL = "gemini-2.5-flash-native-audio-latest";
 
 // A session must be *started* within this window of minting the token.
 // Kept short since the token is normally consumed within a second or two
