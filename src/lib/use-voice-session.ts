@@ -919,36 +919,25 @@ export function useVoiceSession(): UseVoiceSessionResult {
       const processor = inputCtx.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
       processorRef.current = processor;
 
-      // Client-side silence detection: computes RMS amplitude on every
-      // audio callback (~32ms at PROCESSOR_BUFFER_SIZE=512/16kHz) and, on
-      // sustained silence right after real speech, sends audioStreamEnd.
-      // Per Google's docs this is explicitly supported *alongside*
-      // automatic server-side VAD (not instead of it) and "bypasses the
-      // default server-side silence detection delay, returning the
-      // transcript and model response with minimal latency." This is
-      // deliberately NOT the same as disabling automaticActivityDetection
-      // and using activityStart/activityEnd -- that manual-VAD mode has
-      // open, currently-unresolved reports of sessions hanging/timing out
-      // entirely on this model family, so it's not worth the latency win.
-      // Automatic server-side VAD stays on as a fallback in case this
-      // client-side signal is ever missed (e.g. a very quiet trailing
-      // word that never crosses the RMS threshold).
+      // Client-side RMS is used ONLY to drive local UI state (e.g. a
+      // "thinking" indicator the instant the user goes quiet) -- it no
+      // longer sends audioStreamEnd itself. Two real-world logs showed
+      // why manually sending audioStreamEnd here was actively harmful:
+      // every call is treated server-side as an immediate finalize-this-
+      // turn instruction (per Google's docs), so firing it on ordinary
+      // mid-sentence pauses (breaths, beats between words) told the
+      // server the turn was over again and again -- and Google has an
+      // open, acknowledged bug where pause-heavy turns like that cause
+      // input transcription to delay or silently drop altogether (see
+      // "Input transcription drops beginning of long pause-heavy user
+      // turns" on the Gemini API forum). One captured session had 10
+      // separate onset/end cycles over 44 seconds for a single "Hello"
+      // before any transcript came back. automaticActivityDetection
+      // (HIGH sensitivity, 400ms silence, configured below) already owns
+      // end-of-turn detection server-side and doesn't have this failure
+      // mode -- so the client no longer competes with it.
       const SILENCE_RMS_THRESHOLD = 0.01; // empirical: below typical room-tone/mic-noise floor, above true silence
-      // Must stay comfortably ABOVE the server's own silenceDurationMs
-      // (400ms, set in the realtimeInputConfig below) or this client-side
-      // hangover fires first on ordinary mid-sentence pauses (a breath, a
-      // beat between words) and sends audioStreamEnd before the user is
-      // actually done talking. That was fragmenting utterances into
-      // several onset/end cycles per turn and delaying the point at
-      // which Gemini committed a transcript and replied -- the "5 second
-      // lag" symptom. This is meant to be a rarely-firing safety net for
-      // a trailing word so quiet it never crosses the RMS threshold
-      // again, not a competing end-of-speech detector -- so it should
-      // almost never actually fire before the server's own VAD does.
-      const SILENCE_HANGOVER_MS = 900;
       let hasHeardSpeech = false;
-      let silenceStartedAt: number | null = null;
-      let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
 
       processor.onaudioprocess = (event) => {
         if (stoppedRef.current || !sessionRef.current || mutedRef.current) return;
@@ -957,35 +946,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
         let sumSquares = 0;
         for (let i = 0; i < input.length; i++) sumSquares += input[i] * input[i];
         const rms = Math.sqrt(sumSquares / input.length);
-        const now = performance.now();
 
         if (rms >= SILENCE_RMS_THRESHOLD) {
           if (!hasHeardSpeech) {
             console.log(`[VoiceMode timing] speech onset detected (mic RMS crossed threshold) @ ${performance.now().toFixed(0)}ms`);
           }
           hasHeardSpeech = true;
-          silenceStartedAt = null;
-          streamEndSent = false;
-        } else if (hasHeardSpeech && !streamEndSent) {
-          if (silenceStartedAt === null) silenceStartedAt = now;
-          if (now - silenceStartedAt >= SILENCE_HANGOVER_MS) {
-            streamEndSent = true;
-            hasHeardSpeech = false;
-            try {
-              sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
-              console.log(`[VoiceMode timing] audioStreamEnd sent @ ${performance.now().toFixed(0)}ms`);
-            } catch {
-              // Session may have just closed -- nothing more to signal.
-            }
-            // The stream is considered ended as of this callback -- skip
-            // sending this (silent) chunk as audio too. The client can
-            // reopen the stream by sending an audio message again the
-            // moment real speech resumes (per audioStreamEnd's own
-            // documented contract), which the branch above already does
-            // naturally on the very next callback that crosses the RMS
-            // threshold.
-            return;
-          }
+        } else {
+          hasHeardSpeech = false;
         }
 
         const resampled = downsampleTo16k(input, inputCtx.sampleRate);
