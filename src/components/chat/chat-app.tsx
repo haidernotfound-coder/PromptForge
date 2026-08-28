@@ -401,16 +401,7 @@ export function ChatApp({
 
         <div className="min-h-0 flex-1 overflow-hidden">
           {tab === "voice" ? (
-            !hydrated || !active ? null : (
-              <VoicePanel
-                key={active.id}
-                conversation={active}
-                configured={voiceConfigured}
-                onMessagesChange={(messages) =>
-                  handleMessagesChange(active.id, messages)
-                }
-              />
-            )
+            <VoicePanel configured={voiceConfigured} />
           ) : disabledReason ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <TriangleAlert className="h-8 w-8 text-brass" />
