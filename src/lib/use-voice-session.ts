@@ -707,6 +707,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
         },
         onerror: (e) => {
           if (stoppedRef.current) return;
+          console.error("[VoiceMode] Live session onerror", { message: e.message, keyIndex: usedKeyIndex });
           if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
             failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
           }
@@ -716,6 +717,12 @@ export function useVoiceSession(): UseVoiceSessionResult {
           if (stoppedRef.current) return;
           // Reaching here means the server closed the socket without the
           // user hanging up (stop() always sets stoppedRef first).
+          console.error("[VoiceMode] Live session onclose", {
+            code: e?.code,
+            reason: e?.reason,
+            wasClean: e?.wasClean,
+            keyIndex: usedKeyIndex,
+          });
           if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
             failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
           }
