@@ -590,6 +590,9 @@ export function useVoiceSession(): UseVoiceSessionResult {
         let playedAudio = false;
         for (const part of content.modelTurn.parts) {
           if (part.inlineData?.data) {
+            if (!playedAudio) {
+              console.log(`[VoiceMode timing] first model audio chunk received @ ${performance.now().toFixed(0)}ms`);
+            }
             playAudioChunk(part.inlineData.data);
             playedAudio = true;
           }
@@ -634,6 +637,9 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
       if (content.inputTranscription?.text) {
         const text = content.inputTranscription.text;
+        if (!currentUserTurnIdRef.current) {
+          console.log(`[VoiceMode timing] first inputTranscription chunk received @ ${performance.now().toFixed(0)}ms:`, JSON.stringify(text));
+        }
         setTurns((prev) => {
           let id = currentUserTurnIdRef.current;
           if (!id) {
@@ -943,6 +949,9 @@ export function useVoiceSession(): UseVoiceSessionResult {
         const now = performance.now();
 
         if (rms >= SILENCE_RMS_THRESHOLD) {
+          if (!hasHeardSpeech) {
+            console.log(`[VoiceMode timing] speech onset detected (mic RMS crossed threshold) @ ${performance.now().toFixed(0)}ms`);
+          }
           hasHeardSpeech = true;
           silenceStartedAt = null;
           streamEndSent = false;
@@ -953,6 +962,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
             hasHeardSpeech = false;
             try {
               sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+              console.log(`[VoiceMode timing] audioStreamEnd sent @ ${performance.now().toFixed(0)}ms`);
             } catch {
               // Session may have just closed -- nothing more to signal.
             }
