@@ -203,30 +203,31 @@ export async function POST(request: Request) {
               // on every turn. Voice Mode wants the lowest-latency
               // response over deeper reasoning, so this pins it to zero.
               thinkingConfig: { thinkingBudget: 0 },
-              // Tightens end-of-turn detection. Left at server defaults,
-              // this model's VAD can wait a noticeable stretch of
-              // trailing silence before deciding the user's turn is
-              // over -- and both the model's reply *and* the final
-              // transcript for what the user just said are gated on
-              // that decision, which is what produced the "my own words
-              // take ~5s to show up in the transcript" symptom (not a
-              // rendering bug -- the transcript event genuinely wasn't
-              // being sent yet). HIGH sensitivity on both ends makes the
-              // model commit to start-of-speech and end-of-speech faster
-              // (per the SDK's own docs: HIGH detects start/end "more
-              // often" i.e. more eagerly/responsively -- LOW is the more
-              // conservative, slower-to-trigger setting, the opposite of
-              // what's wanted here), and a short silenceDurationMs means
-              // it doesn't wait long after you stop talking. Some
-              // trade-off: this makes brief mid-sentence pauses slightly
-              // more likely to be read as end-of-turn, but that's the
-              // right trade for a snappy voice UI.
+              // Hybrid VAD, per Google's own documented pattern for this
+              // exact latency problem (see "Hybrid VAD" in the Live API
+              // capabilities guide). HIGH/HIGH + 400ms here previously
+              // fought the client-side detector in use-voice-session.ts,
+              // and on its own (client sending no audioStreamEnd at all)
+              // this model's server VAD did NOT reliably honor even a
+              // short configured silenceDurationMs -- multiple open
+              // upstream reports (e.g. googleapis/js-genai#1467,
+              // google-gemini/cookbook#1263) describe Live models closing
+              // turns on a much longer real-world delay than requested,
+              // which is exactly the multi-second "inputTranscription
+              // takes forever" symptom this app kept hitting. Per Google's
+              // hybrid-VAD guidance, server VAD is now LOW/LOW with a
+              // short silenceDurationMs so it's a fallback only (robust
+              // start-of-speech detection, and a safety net if the
+              // client-side detector in use-voice-session.ts ever misses
+              // real end-of-speech) -- the client's own hangover-timed
+              // audioStreamEnd call is what actually ends each turn
+              // promptly now.
               realtimeInputConfig: {
                 automaticActivityDetection: {
-                  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-                  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-                  prefixPaddingMs: 200,
-                  silenceDurationMs: 400,
+                  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+                  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+                  prefixPaddingMs: 20,
+                  silenceDurationMs: 100,
                 },
               },
               // Web Access Addon: Gemini Live's own Grounding with Google

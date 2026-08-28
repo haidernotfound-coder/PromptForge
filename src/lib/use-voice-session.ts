@@ -720,15 +720,20 @@ export function useVoiceSession(): UseVoiceSessionResult {
         // server-side (see api/voice-token/route.ts) -- keeps this
         // description accurate to what the session actually runs with.
         thinkingConfig: { thinkingBudget: 0 },
-        // Mirrors the fast-VAD config locked into the token server-side
+        // Mirrors the hybrid-VAD config locked into the token server-side
         // (see api/voice-token/route.ts) so this description matches
-        // what the session actually runs with.
+        // what the session actually runs with -- server VAD is
+        // deliberately LOW/LOW + short silenceDurationMs here, acting
+        // only as a fallback, because end-of-speech is now decided
+        // client-side (audioStreamEnd, sent from the RMS-based detector
+        // further down this file) per Google's documented Hybrid VAD
+        // pattern.
         realtimeInputConfig: {
           automaticActivityDetection: {
-            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-            prefixPaddingMs: 200,
-            silenceDurationMs: 400,
+            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+            prefixPaddingMs: 20,
+            silenceDurationMs: 100,
           },
         },
         // Web Access Addon: mirrors the googleSearch tool already locked
@@ -919,25 +924,39 @@ export function useVoiceSession(): UseVoiceSessionResult {
       const processor = inputCtx.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
       processorRef.current = processor;
 
-      // Client-side RMS is used ONLY to drive local UI state (e.g. a
-      // "thinking" indicator the instant the user goes quiet) -- it no
-      // longer sends audioStreamEnd itself. Two real-world logs showed
-      // why manually sending audioStreamEnd here was actively harmful:
-      // every call is treated server-side as an immediate finalize-this-
-      // turn instruction (per Google's docs), so firing it on ordinary
-      // mid-sentence pauses (breaths, beats between words) told the
-      // server the turn was over again and again -- and Google has an
-      // open, acknowledged bug where pause-heavy turns like that cause
-      // input transcription to delay or silently drop altogether (see
-      // "Input transcription drops beginning of long pause-heavy user
-      // turns" on the Gemini API forum). One captured session had 10
-      // separate onset/end cycles over 44 seconds for a single "Hello"
-      // before any transcript came back. automaticActivityDetection
-      // (HIGH sensitivity, 400ms silence, configured below) already owns
-      // end-of-turn detection server-side and doesn't have this failure
-      // mode -- so the client no longer competes with it.
+      // Hybrid VAD, matching Google's own documented pattern for this
+      // exact latency problem (see "Hybrid VAD" in the Live API
+      // capabilities guide): server-side automaticActivityDetection
+      // (configured below, now LOW sensitivity / short silenceDurationMs)
+      // is kept on only as a fallback for robust start-of-speech
+      // detection, while THIS client-side detector owns end-of-speech and
+      // sends audioStreamEnd -- which the docs describe as bypassing the
+      // server's own (slower, and per multiple open upstream bug reports,
+      // unreliable at honoring its own configured silenceDurationMs)
+      // end-of-turn decision.
+      //
+      // History of the two things tried before this that DIDN'T work, so
+      // they aren't retried:
+      // 1) A 350ms client hangover that fired on ordinary mid-sentence
+      //    pauses, sending audioStreamEnd mid-utterance and fragmenting
+      //    single utterances into many onset/end cycles.
+      // 2) Removing audioStreamEnd entirely and relying only on server
+      //    VAD -- this avoided the fragmentation but reintroduced exactly
+      //    the multi-second delay this file's timing logs exist to catch,
+      //    because (per open reports like googleapis/js-genai#1467 and
+      //    google-gemini/cookbook#1263) the server's own VAD does not
+      //    reliably honor a short configured silenceDurationMs and can
+      //    fall back to a much longer real-world delay regardless of
+      //    what's requested.
+      // This time: a hangover comfortably longer than a normal mid-word
+      // breath but still far shorter than the multi-second delays seen
+      // from server VAD, so audioStreamEnd fires once, promptly, after
+      // real end-of-speech rather than either extreme.
       const SILENCE_RMS_THRESHOLD = 0.01; // empirical: below typical room-tone/mic-noise floor, above true silence
+      const SILENCE_HANGOVER_MS = 700; // long enough to survive a mid-sentence breath, short enough to still feel instant
       let hasHeardSpeech = false;
+      let silenceStartedAt: number | null = null;
+      let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
 
       processor.onaudioprocess = (event) => {
         if (stoppedRef.current || !sessionRef.current || mutedRef.current) return;
@@ -946,14 +965,32 @@ export function useVoiceSession(): UseVoiceSessionResult {
         let sumSquares = 0;
         for (let i = 0; i < input.length; i++) sumSquares += input[i] * input[i];
         const rms = Math.sqrt(sumSquares / input.length);
+        const now = performance.now();
 
         if (rms >= SILENCE_RMS_THRESHOLD) {
           if (!hasHeardSpeech) {
             console.log(`[VoiceMode timing] speech onset detected (mic RMS crossed threshold) @ ${performance.now().toFixed(0)}ms`);
           }
           hasHeardSpeech = true;
-        } else {
-          hasHeardSpeech = false;
+          silenceStartedAt = null;
+          streamEndSent = false;
+        } else if (hasHeardSpeech && !streamEndSent) {
+          if (silenceStartedAt === null) silenceStartedAt = now;
+          if (now - silenceStartedAt >= SILENCE_HANGOVER_MS) {
+            streamEndSent = true;
+            hasHeardSpeech = false;
+            try {
+              sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+              console.log(`[VoiceMode timing] audioStreamEnd sent @ ${performance.now().toFixed(0)}ms`);
+            } catch {
+              // Session may have just closed -- nothing more to signal.
+            }
+            // Stream is considered ended as of this callback -- skip
+            // sending this (silent) chunk too. Speech resuming crosses
+            // the RMS threshold again on the very next callback, which
+            // reopens the stream naturally via the branch above.
+            return;
+          }
         }
 
         const resampled = downsampleTo16k(input, inputCtx.sampleRate);
