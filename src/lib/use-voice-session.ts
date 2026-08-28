@@ -1038,7 +1038,23 @@ export function useVoiceSession(): UseVoiceSessionResult {
       const SPEECH_RMS_THRESHOLD = 0.01; // empirical: crossing this counts as "started talking"
       const SILENCE_RMS_THRESHOLD = 0.004; // deliberately lower than SPEECH_RMS_THRESHOLD -- trailing voice decay stays above this long enough that it no longer bounces the hangover timer
       const SILENCE_HANGOVER_MS = 500; // now safe to shorten again since it's no longer being restarted by decay flicker
+      // A captured session showed 15+ onset -> audioStreamEnd cycles in a
+      // row with zero server response before one finally landed -- caused
+      // by ordinary mic/background noise repeatedly ticking just over
+      // SPEECH_RMS_THRESHOLD for a frame or two, which was enough to flip
+      // hasHeardSpeech true and, ~500ms of quiet later, fire a real
+      // audioStreamEnd for what was never actual speech. The server just
+      // silently buffered each of those noise-fragments instead of
+      // responding (same accumulation behavior documented on
+      // silenceDurationMs above), which is what produced the 10-20s+
+      // delays before a real utterance finally got answered. Fix: require
+      // speech to stay above threshold for a minimum sustained duration
+      // before the onset is trusted enough to ever send a stream-end for.
+      // Noise blips shorter than this now never reach the "streamEndSent"
+      // path at all.
+      const MIN_SPEECH_DURATION_MS = 150;
       let hasHeardSpeech = false;
+      let speechStartedAt: number | null = null;
       let silenceStartedAt: number | null = null;
       let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
 
@@ -1053,16 +1069,40 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
         if (rms >= SPEECH_RMS_THRESHOLD) {
           if (!hasHeardSpeech) {
+            speechStartedAt = now;
             console.log(`[VoiceMode timing] speech onset detected (mic RMS crossed threshold) @ ${performance.now().toFixed(0)}ms`);
           }
           hasHeardSpeech = true;
           silenceStartedAt = null;
           streamEndSent = false;
-        } else if (hasHeardSpeech && !streamEndSent && rms < SILENCE_RMS_THRESHOLD) {
+        } else if (
+          hasHeardSpeech &&
+          rms < SILENCE_RMS_THRESHOLD &&
+          speechStartedAt !== null &&
+          now - speechStartedAt < MIN_SPEECH_DURATION_MS
+        ) {
+          // Dropped back to silence before ever reaching the minimum
+          // sustained duration -- this was a noise blip, not real speech.
+          // Discard it outright rather than leaving hasHeardSpeech stuck
+          // true with no silenceStartedAt ever set (which would block the
+          // hangover countdown from ever starting for real speech that
+          // follows, since the `!hasHeardSpeech` onset-reset above would
+          // never fire again).
+          hasHeardSpeech = false;
+          speechStartedAt = null;
+          silenceStartedAt = null;
+        } else if (
+          hasHeardSpeech &&
+          !streamEndSent &&
+          rms < SILENCE_RMS_THRESHOLD &&
+          speechStartedAt !== null &&
+          now - speechStartedAt >= MIN_SPEECH_DURATION_MS
+        ) {
           if (silenceStartedAt === null) silenceStartedAt = now;
           if (now - silenceStartedAt >= SILENCE_HANGOVER_MS) {
             streamEndSent = true;
             hasHeardSpeech = false;
+            speechStartedAt = null;
             try {
               sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
               console.log(`[VoiceMode timing] audioStreamEnd sent @ ${performance.now().toFixed(0)}ms`);
