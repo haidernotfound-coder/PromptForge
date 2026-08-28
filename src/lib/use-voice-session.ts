@@ -935,25 +935,32 @@ export function useVoiceSession(): UseVoiceSessionResult {
       // unreliable at honoring its own configured silenceDurationMs)
       // end-of-turn decision.
       //
-      // History of the two things tried before this that DIDN'T work, so
-      // they aren't retried:
-      // 1) A 350ms client hangover that fired on ordinary mid-sentence
-      //    pauses, sending audioStreamEnd mid-utterance and fragmenting
-      //    single utterances into many onset/end cycles.
-      // 2) Removing audioStreamEnd entirely and relying only on server
-      //    VAD -- this avoided the fragmentation but reintroduced exactly
-      //    the multi-second delay this file's timing logs exist to catch,
-      //    because (per open reports like googleapis/js-genai#1467 and
-      //    google-gemini/cookbook#1263) the server's own VAD does not
-      //    reliably honor a short configured silenceDurationMs and can
-      //    fall back to a much longer real-world delay regardless of
-      //    what's requested.
-      // This time: a hangover comfortably longer than a normal mid-word
-      // breath but still far shorter than the multi-second delays seen
-      // from server VAD, so audioStreamEnd fires once, promptly, after
-      // real end-of-speech rather than either extreme.
-      const SILENCE_RMS_THRESHOLD = 0.01; // empirical: below typical room-tone/mic-noise floor, above true silence
-      const SILENCE_HANGOVER_MS = 700; // long enough to survive a mid-sentence breath, short enough to still feel instant
+      // History of what was tried before this that DIDN'T work:
+      // 1) A 350ms client hangover with a single 0.01 RMS threshold --
+      //    fired on ordinary mid-sentence pauses, fragmenting utterances.
+      // 2) Removing audioStreamEnd entirely -- avoided fragmentation but
+      //    reintroduced multi-second delays from unreliable server VAD.
+      // 3) A 700ms hangover, still with a single 0.01 threshold -- this
+      //    was expected to fix it but a real session still showed
+      //    2.9-3.3s onset-to-audioStreamEnd gaps. Root cause: a SINGLE
+      //    RMS threshold has no hysteresis. Real speech trails off
+      //    gradually rather than cutting off cleanly, so as it decays the
+      //    RMS flickers back and forth across 0.01 several times --  and
+      //    every uptick above 0.01, even a single stray sample, reset
+      //    silenceStartedAt to null and restarted the whole 700ms count
+      //    from zero. The visible 700ms hangover was actually being
+      //    re-triggered 3-4x per utterance before it ever ran
+      //    uninterrupted, which is exactly what produced multi-second
+      //    real-world delays out of a 700ms setting.
+      // Fix: two thresholds (hysteresis). SPEECH_RMS_THRESHOLD marks the
+      // onset of real speech; a lower SILENCE_RMS_THRESHOLD is what's
+      // required to count as truly silent enough to start/continue the
+      // hangover countdown. The gap between them absorbs trailing-decay
+      // flicker without needing a long, latency-costly hangover to paper
+      // over it.
+      const SPEECH_RMS_THRESHOLD = 0.01; // empirical: crossing this counts as "started talking"
+      const SILENCE_RMS_THRESHOLD = 0.004; // deliberately lower than SPEECH_RMS_THRESHOLD -- trailing voice decay stays above this long enough that it no longer bounces the hangover timer
+      const SILENCE_HANGOVER_MS = 500; // now safe to shorten again since it's no longer being restarted by decay flicker
       let hasHeardSpeech = false;
       let silenceStartedAt: number | null = null;
       let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
@@ -967,14 +974,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
         const rms = Math.sqrt(sumSquares / input.length);
         const now = performance.now();
 
-        if (rms >= SILENCE_RMS_THRESHOLD) {
+        if (rms >= SPEECH_RMS_THRESHOLD) {
           if (!hasHeardSpeech) {
             console.log(`[VoiceMode timing] speech onset detected (mic RMS crossed threshold) @ ${performance.now().toFixed(0)}ms`);
           }
           hasHeardSpeech = true;
           silenceStartedAt = null;
           streamEndSent = false;
-        } else if (hasHeardSpeech && !streamEndSent) {
+        } else if (hasHeardSpeech && !streamEndSent && rms < SILENCE_RMS_THRESHOLD) {
           if (silenceStartedAt === null) silenceStartedAt = now;
           if (now - silenceStartedAt >= SILENCE_HANGOVER_MS) {
             streamEndSent = true;
@@ -992,6 +999,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
             return;
           }
         }
+        // Note: RMS values in the dead zone between SILENCE_RMS_THRESHOLD
+        // and SPEECH_RMS_THRESHOLD intentionally do nothing -- they
+        // neither reset nor advance the hangover countdown, which is the
+        // whole point of the gap between the two thresholds.
 
         const resampled = downsampleTo16k(input, inputCtx.sampleRate);
         const pcm16 = floatTo16BitPCM(resampled);
