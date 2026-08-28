@@ -169,7 +169,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="relative flex h-full min-h-0 flex-col"
+      className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -183,18 +183,18 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 min-w-0 flex-1">
       <div
         ref={scrollRef}
-        className="h-full space-y-5 overflow-y-auto px-3 py-5 sm:px-6"
+        className="h-full min-w-0 space-y-5 overflow-x-hidden overflow-y-auto px-3 py-6 sm:px-6"
       >
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-3 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-accent text-accent-foreground shadow-glow-sm">
               <Sparkles className="h-6 w-6" />
             </span>
-            <h2 className="font-display text-xl font-semibold tracking-tight">How can I help today?</h2>
-            <p className="text-sm text-text-muted">
+            <h2 className="font-display text-2xl font-semibold tracking-tight">How can I help today?</h2>
+            <p className="max-w-sm text-sm text-text-muted">
               Ask anything — this chat can help with prompts, code, studying, or slides.
             </p>
           </div>
@@ -202,24 +202,24 @@ export function ChatPanel({
           messages.map((m) => (
             <div
               key={m.id}
-              className={cn("flex gap-3 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
+              className={cn("flex min-w-0 gap-3 animate-fade-in", m.role === "user" ? "justify-end" : "justify-start")}
             >
               {m.role === "assistant" && (
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-accent text-accent-foreground shadow-soft">
                   <Bot className="h-4 w-4" />
                 </span>
               )}
               <div
                 className={cn(
-                  "group relative max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%]",
+                  "group relative min-w-0 max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%]",
                   m.role === "user"
-                    ? "whitespace-pre-wrap rounded-tr-sm bg-accent text-accent-foreground"
-                    : "rounded-tl-sm bg-surface-raised text-text shadow-sm"
+                    ? "whitespace-pre-wrap break-words rounded-tr-sm bg-gradient-accent text-accent-foreground shadow-soft"
+                    : "overflow-hidden rounded-tl-sm bg-surface-raised text-text shadow-soft"
                 )}
               >
                 {m.role === "assistant" ? (
                   <>
-                    <MarkdownRenderer content={m.content} />
+                    <MarkdownRenderer content={m.content} className="min-w-0" />
                     {m.files && m.files.length > 0 && <FileCardList files={m.files} />}
                     {m.sources && m.sources.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
@@ -260,7 +260,7 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={() => copyMessage(m.content)}
-                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 shadow-sm transition-opacity group-hover:flex group-hover:opacity-100"
+                    className="absolute -top-2 -right-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted opacity-0 shadow-soft transition-opacity group-hover:flex group-hover:opacity-100"
                     aria-label="Copy message"
                   >
                     <Copy className="h-3 w-3" />
@@ -268,7 +268,7 @@ export function ChatPanel({
                 )}
               </div>
               {m.role === "user" && (
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted shadow-sm">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted shadow-soft">
                   <User className="h-4 w-4" />
                 </span>
               )}
@@ -277,10 +277,10 @@ export function ChatPanel({
         )}
         {sending && (
           <div className="flex animate-fade-in items-end gap-3" role="status" aria-live="polite">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-accent text-accent-foreground shadow-soft">
               <Bot className="h-4 w-4" />
             </span>
-            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-surface-raised px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-surface-raised px-4 py-3 shadow-soft">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint [animation-delay:-0.15s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-faint" />
@@ -301,27 +301,33 @@ export function ChatPanel({
       )}
       </div>
 
-      <div className="border-t border-border bg-bg px-3 pb-3 pt-3 sm:px-6">
+      <div className="shrink-0 border-t border-border bg-bg/95 px-3 pb-3 pt-2.5 backdrop-blur-sm sm:px-6 sm:pb-4">
         {messages.length === 0 && (
-          <div className="mb-2 flex flex-wrap justify-center gap-1.5">
+          <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap justify-center gap-1.5">
             {STARTERS.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
                 disabled={sending}
                 onClick={() => setInput(prompt)}
-                className="rounded-full border border-border px-2.5 py-1 text-xs text-text-muted transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-muted transition-colors hover:border-accent/30 hover:bg-accent-soft hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {prompt.trim()}
               </button>
             ))}
           </div>
         )}
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
+        <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-1.5">
           <AttachmentChips attachments={attachmentState.attachments} onRemove={attachmentState.removeAttachment} disabled={sending} />
-          <div className="flex items-end gap-1.5 rounded-2xl border border-border bg-surface-raised p-1.5 shadow-sm focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/20">
-            <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} />
-            <VoiceInputButton onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))} disabled={sending} />
+          <div className="flex items-end gap-1 rounded-2xl border border-border bg-surface-raised p-1.5 shadow-soft transition-shadow focus-within:border-accent/50 focus-within:shadow-glow-sm">
+            <div className="flex shrink-0 items-center gap-0.5">
+              <AttachmentButton onFiles={(files) => void attachmentState.addFiles(files)} disabled={sending} className="rounded-xl" />
+              <VoiceInputButton
+                onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))}
+                disabled={sending}
+                className="rounded-xl"
+              />
+            </div>
             <Textarea
               ref={textareaRef}
               value={input}

@@ -57,6 +57,7 @@
 
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden;
   }
 
   body {
@@ -64,6 +65,7 @@
     color: hsl(var(--text));
     font-family: var(--font-body);
     font-feature-settings: "cv11", "ss01";
+    overflow-x: hidden;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -171,6 +173,7 @@
   line-height: 1.7;
   color: hsl(var(--text));
   word-wrap: break-word;
+  min-width: 0;
 }
 
 .md-content > *:first-child {

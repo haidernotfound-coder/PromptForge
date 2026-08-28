@@ -244,8 +244,8 @@ export function VoicePanel({
   const displayTurns = turns.length > 0 ? turns : messagesToTurns(conversation.messages);
 
   return (
-    <div className="flex h-full min-h-0 flex-col items-center">
-      <div ref={scrollRef} className="w-full min-h-0 flex-1 overflow-y-auto px-4 pt-6 sm:px-8">
+    <div className="flex h-full min-h-0 min-w-0 flex-col items-center overflow-hidden">
+      <div ref={scrollRef} className="w-full min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-6 sm:px-8">
         <div className="mx-auto flex max-w-lg flex-col gap-3 pb-4">
           {displayTurns.length === 0 && !live && (
             <p className="pt-10 text-center text-sm text-text-faint">
