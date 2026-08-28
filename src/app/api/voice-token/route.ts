@@ -164,6 +164,29 @@ export async function POST(request: Request) {
             model: VOICE_MODEL,
             config: {
               responseModalities: [Modality.AUDIO],
+              // Text transcripts of both sides of the call -- without
+              // these, the client's onmessage handler never receives
+              // content.inputTranscription / outputTranscription events,
+              // so the transcript panel in voice-panel.tsx stays empty
+              // even though audio plays fine. Must be locked here (not
+              // only requested client-side in use-voice-session.ts's
+              // connectSession config) because liveConnectConstraints is
+              // what the server actually enforces for a token-authed
+              // session -- the client-side config passed to
+              // ai.live.connect() is only honored insofar as the token
+              // doesn't already pin the relevant fields. Some Live models
+              // silently drop transcription if it's only requested
+              // client-side instead of being part of the locked config.
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
+              // gemini-2.5-flash-native-audio-latest uses thinkingBudget
+              // (not 3.1's thinkingLevel) and, left unset, can default to
+              // a non-zero thinking budget -- adding a real chunk of
+              // silent "thinking" time before the first audio token comes
+              // back, which is what was showing up as a flat 2-3s delay
+              // on every turn. Voice Mode wants the lowest-latency
+              // response over deeper reasoning, so this pins it to zero.
+              thinkingConfig: { thinkingBudget: 0 },
               // Web Access Addon: Gemini Live's own Grounding with Google
               // Search tool, enabled the same way the text-chat attachment
               // path enables it for plain generateContent calls (see

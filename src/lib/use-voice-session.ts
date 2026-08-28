@@ -536,6 +536,37 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
   const handleServerMessage = React.useCallback(
     (message: LiveServerMessage) => {
+      // As of March 2026, some Live API native-audio models stopped
+      // resolving Grounding-with-Google-Search server-side in some
+      // regions and instead surface it to the client as an ordinary
+      // function call (see Google AI forum reports for
+      // gemini-live-2.5-flash-native-audio). This app has no real
+      // search backend to answer that call with, but the Live API
+      // protocol expects *some* FunctionResponse before it will
+      // continue the turn -- without one, the session can stall
+      // waiting on a reply that never comes. Responding with an empty
+      // result lets the model gracefully fall back to answering from
+      // its own knowledge instead of the call hanging silently, which
+      // is the best available behavior until this app adds a real
+      // search tool implementation for voice.
+      if (message.toolCall?.functionCalls?.length && sessionRef.current) {
+        console.warn(
+          "[VoiceMode] Received an unexpected tool/function call from the Live session -- this model may not be resolving Grounding with Google Search server-side. Responding empty so the turn doesn't stall.",
+          message.toolCall.functionCalls.map((c) => c.name)
+        );
+        try {
+          sessionRef.current.sendToolResponse({
+            functionResponses: message.toolCall.functionCalls.map((call) => ({
+              id: call.id,
+              name: call.name,
+              response: { result: "" },
+            })),
+          });
+        } catch {
+          // Session may have just closed -- nothing more to do.
+        }
+      }
+
       const content = message.serverContent;
       if (!content) return;
 
@@ -669,6 +700,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        // Mirrors the zero thinking budget locked into the token
+        // server-side (see api/voice-token/route.ts) -- keeps this
+        // description accurate to what the session actually runs with.
+        thinkingConfig: { thinkingBudget: 0 },
         // Web Access Addon: mirrors the googleSearch tool already locked
         // into this token server-side (see api/voice-token/route.ts).
         // Declaring it again here isn't strictly required -- the token's

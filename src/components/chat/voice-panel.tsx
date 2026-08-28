@@ -246,7 +246,7 @@ export function VoicePanel({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col items-center overflow-hidden">
       <div ref={scrollRef} className="w-full min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-6 sm:px-8">
-        <div className="mx-auto flex max-w-lg flex-col gap-3 pb-4">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3 pb-4">
           {displayTurns.length === 0 && !live && (
             <p className="pt-10 text-center text-sm text-text-faint">
               Start a conversation and speak naturally — Gemini will respond in real time and you can
@@ -258,7 +258,7 @@ export function VoicePanel({
             <div
               key={turn.id}
               className={cn(
-                "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+                "max-w-[90%] rounded-2xl px-5 py-3 text-base leading-relaxed",
                 turn.role === "user"
                   ? "ml-auto bg-accent text-accent-foreground"
                   : "mr-auto bg-surface text-text",
