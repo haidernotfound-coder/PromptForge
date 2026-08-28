@@ -137,6 +137,25 @@ export async function POST(request: Request) {
               // (Left unset here: the session's default persona is fine
               // for Voice Mode; see use-voice-session.ts for per-call
               // greeting/context text sent as the first realtime input.)
+              //
+              // Web Access Addon: Gemini Live's own Grounding with Google
+              // Search tool, enabled the same way the text-chat attachment
+              // path enables it for plain generateContent calls (see
+              // lib/server/gemini.ts) -- just set at session-connect time
+              // instead of per-request, since a Live session is one
+              // long-lived connection rather than one-shot calls. The
+              // model decides per-turn whether to actually search;
+              // nothing here forces every reply through it. Locked
+              // server-side in the token (not left for the client to
+              // request) for the same reason the model itself is locked
+              // here -- the client can't renegotiate a different tool set
+              // even if the token value were tampered with. This is safe
+              // to combine with the rest of this config because it's the
+              // *only* tool declared for this session: the Gemini API
+              // does not support mixing search tools with non-search
+              // tools (e.g. function calling) in the same session, and
+              // Voice Mode declares no function-calling tools.
+              tools: [{ googleSearch: {} }],
             },
           },
         },

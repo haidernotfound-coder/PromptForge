@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { GoogleGenAI, Modality, type Session, type LiveServerMessage } from "@google/genai";
+import { GoogleGenAI, Modality, type Session, type LiveServerMessage, type GroundingMetadata } from "@google/genai";
 
 /**
  * Voice Mode session hook.
@@ -37,6 +37,10 @@ export interface VoiceTurn {
   role: "user" | "model";
   text: string;
   final: boolean;
+  /** Web Access Addon: (title, uri) pairs Gemini Live's Google Search
+   *  grounding cited for this turn, when the model chose to search --
+   *  undefined/empty otherwise. */
+  sources?: { title: string; uri: string }[];
 }
 
 export interface UseVoiceSessionResult {
@@ -102,6 +106,49 @@ function getTorchTrack(stream: MediaStream | null): MediaStreamTrack | null {
   } catch {
     return null;
   }
+}
+
+/** Pulls (title, uri) pairs out of Gemini Live's groundingMetadata -- same
+ *  groundingChunks[].web.{uri,title} shape extractSearchSources in
+ *  lib/server/gemini.ts reads for the text-chat search path, just sourced
+ *  from the Live API's streamed serverContent instead of a single
+ *  generateContent response. Best-effort/never-throws, same as that
+ *  function, since grounding metadata's shape is additive/optional. */
+function extractGroundingSources(metadata: GroundingMetadata): { title: string; uri: string }[] {
+  try {
+    const chunks = metadata.groundingChunks ?? [];
+    const seen = new Set<string>();
+    const sources: { title: string; uri: string }[] = [];
+    for (const chunk of chunks) {
+      const uri = chunk.web?.uri;
+      const title = chunk.web?.title;
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      sources.push({ title: title || uri, uri });
+    }
+    return sources;
+  } catch {
+    return [];
+  }
+}
+
+/** Merges newly-arrived sources onto a turn's existing ones, deduped by
+ *  uri -- grounding metadata can arrive across more than one server
+ *  message for a single turn (e.g. the model runs more than one search
+ *  before finishing its answer). */
+function mergeSources(
+  existing: { title: string; uri: string }[] | undefined,
+  incoming: { title: string; uri: string }[]
+): { title: string; uri: string }[] {
+  if (!existing?.length) return incoming;
+  const seen = new Set(existing.map((s) => s.uri));
+  const merged = [...existing];
+  for (const s of incoming) {
+    if (seen.has(s.uri)) continue;
+    seen.add(s.uri);
+    merged.push(s);
+  }
+  return merged;
 }
 
 function floatTo16BitPCM(float32: Float32Array): Int16Array {
@@ -499,6 +546,35 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
   const handleServerMessage = React.useCallback(
     (message: LiveServerMessage) => {
+      // As of March 2026, some Live API native-audio models stopped
+      // resolving Grounding-with-Google-Search server-side in some
+      // regions and instead surface it to the client as an ordinary
+      // function call (see Google AI forum reports for
+      // gemini-live-2.5-flash-native-audio). This app has no real search
+      // backend to answer that call with, but the Live API protocol
+      // expects *some* FunctionResponse before it will continue the
+      // turn -- without one, the session can stall waiting on a reply
+      // that never comes. Responding with an empty result lets the
+      // model gracefully fall back to answering from its own knowledge
+      // instead of the call hanging silently.
+      if (message.toolCall?.functionCalls?.length && sessionRef.current) {
+        console.warn(
+          "[VoiceMode] Received an unexpected tool/function call from the Live session -- this model may not be resolving Grounding with Google Search server-side. Responding empty so the turn doesn't stall.",
+          message.toolCall.functionCalls.map((c) => c.name)
+        );
+        try {
+          sessionRef.current.sendToolResponse({
+            functionResponses: message.toolCall.functionCalls.map((call) => ({
+              id: call.id,
+              name: call.name,
+              response: { result: "" },
+            })),
+          });
+        } catch {
+          // Session may have just closed -- nothing more to do.
+        }
+      }
+
       const content = message.serverContent;
       if (!content) return;
 
@@ -543,6 +619,22 @@ export function useVoiceSession(): UseVoiceSessionResult {
           }
           return prev.map((t) => (t.id === id ? { ...t, text: t.text + text } : t));
         });
+      }
+
+      // Web Access Addon: grounding metadata arrives independently of
+      // transcription/audio ordering, so this only attaches sources if a
+      // model turn is already in progress -- if it arrives before any
+      // transcription text for this turn, the sources are simply
+      // attached to the empty in-progress turn and show up once text
+      // starts filling in.
+      if (content.groundingMetadata) {
+        const sources = extractGroundingSources(content.groundingMetadata);
+        if (sources.length && currentModelTurnIdRef.current) {
+          const id = currentModelTurnIdRef.current;
+          setTurns((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, sources: mergeSources(t.sources, sources) } : t))
+          );
+        }
       }
 
       if (content.inputTranscription?.text) {
@@ -608,6 +700,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        // Web Access Addon: mirrors the googleSearch tool already locked
+        // into this token server-side (see api/voice-token/route.ts).
+        // Declaring it again here isn't strictly required -- the token's
+        // liveConnectConstraints is what actually enforces it -- but
+        // keeps this client-side config an accurate description of the
+        // session it's opening rather than silently relying on a value
+        // the client never states.
+        tools: [{ googleSearch: {} }],
       },
       callbacks: {
         onopen: () => {

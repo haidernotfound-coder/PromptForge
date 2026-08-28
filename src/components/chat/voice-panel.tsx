@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera, Zap, ZapOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera, Zap, ZapOff, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useVoiceSession, type VoiceState } from "@/lib/use-voice-session";
 
@@ -197,6 +197,23 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
               )}
             >
               {turn.text || "…"}
+              {turn.role === "model" && turn.sources && turn.sources.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-text-faint">Sources</span>
+                  {turn.sources.map((s) => (
+                    <a
+                      key={s.uri}
+                      href={s.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 truncate text-xs text-accent hover:underline"
+                    >
+                      <LinkIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{s.title}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
