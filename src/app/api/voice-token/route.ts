@@ -144,24 +144,28 @@ export async function POST(request: Request) {
               // for Voice Mode; see use-voice-session.ts for per-call
               // greeting/context text sent as the first realtime input.)
               //
-              // Web Access Addon: Gemini Live's own Grounding with Google
-              // Search tool, enabled the same way the text-chat attachment
-              // path enables it for plain generateContent calls (see
-              // lib/server/gemini.ts) -- just set at session-connect time
-              // instead of per-request, since a Live session is one
-              // long-lived connection rather than one-shot calls. The
-              // model decides per-turn whether to actually search;
-              // nothing here forces every reply through it. Locked
-              // server-side in the token (not left for the client to
-              // request) for the same reason the model itself is locked
-              // here -- the client can't renegotiate a different tool set
-              // even if the token value were tampered with. This is safe
-              // to combine with the rest of this config because it's the
-              // *only* tool declared for this session: the Gemini API
-              // does not support mixing search tools with non-search
-              // tools (e.g. function calling) in the same session, and
-              // Voice Mode declares no function-calling tools.
-              tools: [{ googleSearch: {} }],
+              // Web Access Addon: Gemini Live's Grounding with Google
+              // Search tool -- TEMPORARILY DISABLED.
+              //
+              // As of March 2026, some Live API native-audio models stopped
+              // resolving this server-side in some regions and instead
+              // surface it to the client as an ordinary function call
+              // (see the toolCall handling this same tool used to require,
+              // still present as a defensive fallback in
+              // use-voice-session.ts's handleServerMessage). When that
+              // happens, the *entire turn* can stall waiting on a
+              // tool-response round trip the client's empty-result
+              // fallback doesn't always satisfy cleanly -- the session
+              // connects fine (listening), but the model never actually
+              // replies, on every turn, regardless of which key minted the
+              // token. That's indistinguishable from a dead session in the
+              // UI, so if this is happening in your region/model
+              // combination, disabling the tool removes the failure point
+              // entirely: Voice Mode doesn't need live search to hold a
+              // conversation. Re-enable (`tools: [{ googleSearch: {} }]`)
+              // once Google's Live API reliably resolves grounding
+              // server-side again for this model.
+              tools: [],
             },
           },
         },

@@ -709,14 +709,12 @@ export function useVoiceSession(): UseVoiceSessionResult {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        // Web Access Addon: mirrors the googleSearch tool already locked
-        // into this token server-side (see api/voice-token/route.ts).
-        // Declaring it again here isn't strictly required -- the token's
-        // liveConnectConstraints is what actually enforces it -- but
-        // keeps this client-side config an accurate description of the
-        // session it's opening rather than silently relying on a value
-        // the client never states.
-        tools: [{ googleSearch: {} }],
+        // Web Access Addon: temporarily disabled -- mirrors the empty
+        // tools list now locked into the token server-side (see
+        // api/voice-token/route.ts for why: unresolved grounding
+        // function-calls were stalling replies entirely on some
+        // model/region combos). Keep this in sync with the token.
+        tools: [],
       },
       callbacks: {
         onopen: () => {

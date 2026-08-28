@@ -59,4 +59,3 @@ export function getLastGoodGeminiVoiceKeyIndex(): number {
 export function setLastGoodGeminiVoiceKeyIndex(index: number): void {
   lastGoodGeminiVoiceIndex = index;
 }
- 
