@@ -238,6 +238,36 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const currentUserTurnIdRef = React.useRef<string | null>(null);
   const stoppedRef = React.useRef(false);
 
+  // How many times start() has retried the *connection* itself (fresh
+  // token + fresh ai.live.connect()) after a quota-flavored rejection.
+  // Separate from the /api/voice-token route's own key rotation: that
+  // route only rotates across keys while minting a token, so a key that
+  // mints fine but is actually out of Live-session quota only reveals
+  // that once the WebSocket handshake is rejected -- which happens after
+  // the token response already came back "successful". This ref lets the
+  // retry loop below survive across the async gap without racing a
+  // second concurrent start() call (guarded by the sessionRef.current
+  // check at the top of start()).
+  const connectRetriesRef = React.useRef(0);
+  // Hard cap independent of the current key-pool size so a future config
+  // change can't accidentally spin through dozens of connect attempts in
+  // a row; a handful of tries is enough to skip past a couple of
+  // exhausted keys without the user waiting too long for an error.
+  const MAX_CONNECT_RETRIES = 6;
+
+  function isQuotaLikeCloseOrError(reasonOrMessage: string | undefined): boolean {
+    if (!reasonOrMessage) return false;
+    const s = reasonOrMessage.toLowerCase();
+    return (
+      s.includes("resource_exhausted") ||
+      s.includes("quota") ||
+      s.includes("429") ||
+      s.includes("rate limit") ||
+      s.includes("unavailable") ||
+      s.includes("503")
+    );
+  }
+
   const stopVideoCapture = React.useCallback(() => {
     if (videoIntervalRef.current) {
       clearInterval(videoIntervalRef.current);
@@ -587,9 +617,115 @@ export function useVoiceSession(): UseVoiceSessionResult {
     [clearPlaybackQueue, playAudioChunk]
   );
 
+  // Mints a fresh ephemeral token and opens the Live session. Pulled out
+  // of start() so a quota-flavored rejection at connect time can call this
+  // again with a brand new token -- which, via /api/voice-token's own
+  // rotation, is very likely minted from a *different* key in the pool --
+  // instead of the whole call just dying on whichever single key it
+  // happened to draw first.
+  const connectSession = React.useCallback(async (): Promise<Session> => {
+    const tokenRes = await fetch("/api/voice-token", { method: "POST" });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.token) {
+      throw new Error(tokenData.error || "Couldn't start Voice Mode.");
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: tokenData.token,
+      // Ephemeral auth tokens (see api/voice-token/route.ts) are only
+      // supported under the v1alpha API surface -- without this, the
+      // WebSocket handshake still succeeds (onopen fires) but the server
+      // rejects the token a few seconds in once it's actually validated,
+      // which looks like the call silently hanging up on its own.
+      httpOptions: { apiVersion: "v1alpha" },
+    });
+
+    return ai.live.connect({
+      model: tokenData.model,
+      config: {
+        responseModalities: [Modality.AUDIO],
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+        // Web Access Addon: mirrors the googleSearch tool already locked
+        // into this token server-side (see api/voice-token/route.ts).
+        // Declaring it again here isn't strictly required -- the token's
+        // liveConnectConstraints is what actually enforces it -- but
+        // keeps this client-side config an accurate description of the
+        // session it's opening rather than silently relying on a value
+        // the client never states.
+        tools: [{ googleSearch: {} }],
+      },
+      callbacks: {
+        onopen: () => {
+          if (stoppedRef.current) return;
+          // A successful handshake means this key/token is actually good
+          // (not just mintable) -- reset the retry counter so a later,
+          // unrelated disconnect during the same call starts its own
+          // fresh run of retries rather than inheriting this one's count.
+          connectRetriesRef.current = 0;
+          setState("listening");
+        },
+        onmessage: (message: LiveServerMessage) => {
+          if (stoppedRef.current) return;
+          handleServerMessage(message);
+        },
+        onerror: (e) => {
+          if (stoppedRef.current) return;
+          void handleDisconnect(e.message);
+        },
+        onclose: (e) => {
+          if (stoppedRef.current) return;
+          // Reaching here means the server closed the socket without the
+          // user hanging up (stop() always sets stoppedRef first).
+          void handleDisconnect(e?.reason);
+        },
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleServerMessage]);
+
+  // Shared onerror/onclose handler: retries the connection (new token,
+  // likely a new key) on anything that looks like a quota/transient
+  // rejection, up to MAX_CONNECT_RETRIES; otherwise surfaces the error as
+  // before. Defined with function (not useCallback) so it can be declared
+  // after connectSession while still being referenced from inside it via
+  // closure -- both are stable for the lifetime of a single start() call.
+  async function handleDisconnect(reasonOrMessage: string | undefined) {
+    if (stoppedRef.current) return;
+    const canRetry =
+      connectRetriesRef.current < MAX_CONNECT_RETRIES && isQuotaLikeCloseOrError(reasonOrMessage);
+    if (!canRetry) {
+      setError(reasonOrMessage || "Voice call ended unexpectedly.");
+      setState("error");
+      sessionRef.current = null;
+      return;
+    }
+    connectRetriesRef.current += 1;
+    sessionRef.current = null;
+    setState("connecting");
+    try {
+      const session = await connectSession();
+      if (stoppedRef.current) {
+        session.close();
+        return;
+      }
+      sessionRef.current = session;
+    } catch (err) {
+      if (stoppedRef.current) return;
+      // The retried connect attempt itself failed outright (e.g. the
+      // fetch to /api/voice-token failed, or every key in the pool is
+      // exhausted) -- treat it as one more quota-like failure and either
+      // retry again or give up per the same cap, rather than a distinct
+      // error path.
+      const message = err instanceof Error ? err.message : "Couldn't start Voice Mode.";
+      await handleDisconnect(message);
+    }
+  }
+
   const start = React.useCallback(async (initialTurns?: VoiceTurn[]) => {
     if (sessionRef.current) return;
     stoppedRef.current = false;
+    connectRetriesRef.current = 0;
     setError(null);
     // Resuming a previously-saved voice conversation preloads its
     // transcript so it's visible immediately, rather than starting the
@@ -601,12 +737,6 @@ export function useVoiceSession(): UseVoiceSessionResult {
     setState("connecting");
 
     try {
-      const tokenRes = await fetch("/api/voice-token", { method: "POST" });
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || !tokenData.token) {
-        throw new Error(tokenData.error || "Couldn't start Voice Mode.");
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -617,57 +747,11 @@ export function useVoiceSession(): UseVoiceSessionResult {
       micStreamRef.current = stream;
       setMicGranted(true);
 
-      const ai = new GoogleGenAI({
-        apiKey: tokenData.token,
-        // Ephemeral auth tokens (see api/voice-token/route.ts) are only
-        // supported under the v1alpha API surface -- without this, the
-        // WebSocket handshake still succeeds (onopen fires) but the server
-        // rejects the token a few seconds in once it's actually validated,
-        // which looks like the call silently hanging up on its own.
-        httpOptions: { apiVersion: "v1alpha" },
-      });
-
-      const session = await ai.live.connect({
-        model: tokenData.model,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          // Web Access Addon: mirrors the googleSearch tool already locked
-          // into this token server-side (see api/voice-token/route.ts).
-          // Declaring it again here isn't strictly required -- the token's
-          // liveConnectConstraints is what actually enforces it -- but
-          // keeps this client-side config an accurate description of the
-          // session it's opening rather than silently relying on a value
-          // the client never states.
-          tools: [{ googleSearch: {} }],
-        },
-        callbacks: {
-          onopen: () => {
-            if (stoppedRef.current) return;
-            setState("listening");
-          },
-          onmessage: (message: LiveServerMessage) => {
-            if (stoppedRef.current) return;
-            handleServerMessage(message);
-          },
-          onerror: (e) => {
-            if (stoppedRef.current) return;
-            setError(e.message || "Voice connection error");
-            setState("error");
-          },
-          onclose: (e) => {
-            if (stoppedRef.current) return;
-            // Reaching here means the server closed the socket without the
-            // user hanging up (stop() always sets stoppedRef first) -- show
-            // it as an error instead of quietly resetting to idle, so a
-            // server-side rejection (bad token, quota, etc.) is visible
-            // instead of looking like the call just silently ended.
-            setError(e?.reason || "Voice call ended unexpectedly.");
-            setState("error");
-          },
-        },
-      });
+      const session = await connectSession();
+      if (stoppedRef.current) {
+        session.close();
+        return;
+      }
       sessionRef.current = session;
 
       // Mic capture pipeline: MediaStream -> ScriptProcessorNode (grabs raw
@@ -724,7 +808,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
       sessionRef.current?.close();
       sessionRef.current = null;
     }
-  }, [cleanupAudioIO, handleServerMessage]);
+  }, [cleanupAudioIO, connectSession]);
 
   React.useEffect(() => {
     return () => {
