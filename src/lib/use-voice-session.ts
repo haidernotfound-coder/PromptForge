@@ -629,6 +629,12 @@ export function useVoiceSession(): UseVoiceSessionResult {
     [clearPlaybackQueue, playAudioChunk]
   );
 
+  // Key indices that minted a token successfully but whose Live
+  // connection then failed for this call -- sent to /api/voice-token so
+  // it routes around them instead of handing back the same known-bad key
+  // (see the route's excludeKeyIndices handling). Reset per start().
+  const failedKeyIndicesRef = React.useRef<number[]>([]);
+
   // Mints a fresh ephemeral token and opens the Live session. Pulled out
   // of start() so a quota-flavored rejection at connect time can call this
   // again with a brand new token -- which, via /api/voice-token's own
@@ -636,11 +642,16 @@ export function useVoiceSession(): UseVoiceSessionResult {
   // instead of the whole call just dying on whichever single key it
   // happened to draw first.
   const connectSession = React.useCallback(async (): Promise<Session> => {
-    const tokenRes = await fetch("/api/voice-token", { method: "POST" });
+    const tokenRes = await fetch("/api/voice-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excludeKeyIndices: failedKeyIndicesRef.current }),
+    });
     const tokenData = await tokenRes.json();
     if (!tokenRes.ok || !tokenData.token) {
       throw new Error(tokenData.error || "Couldn't start Voice Mode.");
     }
+    const usedKeyIndex: number | undefined = tokenData.keyIndex;
 
     const ai = new GoogleGenAI({
       apiKey: tokenData.token,
@@ -679,13 +690,15 @@ export function useVoiceSession(): UseVoiceSessionResult {
           // key pool retry forever (each attempt got just far enough to
           // hit onopen before being killed, refilling the budget every
           // time) instead of ever reaching MAX_CONNECT_RETRIES and
-          // surfacing an error. The counter now only resets in start()
-          // for a brand new call, plus once via delayedResetTimer below
-          // after a session has stayed open long enough to trust it.
+          // surfacing an error. The counter (and the failed-key list
+          // below) only reset in start() for a brand new call, plus once
+          // here after a session has stayed open long enough to trust it.
           setState("listening");
           if (openResetTimerRef.current) clearTimeout(openResetTimerRef.current);
           openResetTimerRef.current = setTimeout(() => {
-            if (!stoppedRef.current) connectRetriesRef.current = 0;
+            if (stoppedRef.current) return;
+            connectRetriesRef.current = 0;
+            failedKeyIndicesRef.current = [];
           }, OPEN_STABLE_RESET_MS);
         },
         onmessage: (message: LiveServerMessage) => {
@@ -694,12 +707,18 @@ export function useVoiceSession(): UseVoiceSessionResult {
         },
         onerror: (e) => {
           if (stoppedRef.current) return;
+          if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
+            failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
+          }
           void handleDisconnect(e.message);
         },
         onclose: (e) => {
           if (stoppedRef.current) return;
           // Reaching here means the server closed the socket without the
           // user hanging up (stop() always sets stoppedRef first).
+          if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
+            failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
+          }
           void handleDisconnect(e?.reason);
         },
       },
@@ -753,6 +772,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
     if (sessionRef.current) return;
     stoppedRef.current = false;
     connectRetriesRef.current = 0;
+    failedKeyIndicesRef.current = [];
     setError(null);
     // Resuming a previously-saved voice conversation preloads its
     // transcript so it's visible immediately, rather than starting the

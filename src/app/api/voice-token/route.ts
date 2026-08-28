@@ -63,7 +63,7 @@ export async function GET() {
   return NextResponse.json({ configured: isVoiceModeConfigured() });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getAppSessionOrNull();
   if (!session) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
@@ -77,8 +77,38 @@ export async function POST() {
     );
   }
 
+  // Indices the client already tried this call and had rejected *after*
+  // minting succeeded -- i.e. the Live connection itself failed for
+  // quota, not the token mint. setLastGoodGeminiVoiceKeyIndex only
+  // reflects "minted a token," which isn't the same as "the key actually
+  // works," since Live-session quota is checked at connect time, not
+  // mint time. Without this, a retry that starts back at the persisted
+  // "last good" cursor lands on the exact same already-known-bad key
+  // every time, looping forever instead of ever reaching a fresh one.
+  let excludeIndices: number[] = [];
+  try {
+    const body = await request.json();
+    if (Array.isArray(body?.excludeKeyIndices)) {
+      excludeIndices = body.excludeKeyIndices.filter((n: unknown) => typeof n === "number");
+    }
+  } catch {
+    // No body / not JSON -- normal for the first call of a session.
+  }
+  const excludeSet = new Set(excludeIndices);
+
   const startIndex = getLastGoodGeminiVoiceKeyIndex();
-  const order = keys.map((_, i) => (startIndex + i) % keys.length);
+  const order = keys
+    .map((_, i) => (startIndex + i) % keys.length)
+    .filter((i) => !excludeSet.has(i));
+
+  // Every key has already failed this call -- don't bother retrying any
+  // of them again, since we already know none currently work.
+  if (order.length === 0) {
+    return NextResponse.json(
+      { error: "All Voice Mode keys are currently rate-limited or unavailable. Please try again shortly." },
+      { status: 503 }
+    );
+  }
 
   const now = Date.now();
   const expireTime = new Date(now + SESSION_EXPIRE_MINUTES * 60 * 1000).toISOString();
@@ -136,6 +166,7 @@ export async function POST() {
         token: token.name,
         model: VOICE_MODEL,
         expireTime,
+        keyIndex: i,
       });
     } catch (err) {
       console.error("Gemini Live ephemeral token error", err);
