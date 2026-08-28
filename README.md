@@ -1095,3 +1095,107 @@ app (including the existing text chat) is completely unaffected.
   for voice conversations instead of the message-bubble icon.
 - `src/components/chat/chat-app.tsx` — added the Chats/Voice tab switcher.
 - `.env.example` — documented `GEMINI_VOICE_API_KEY_1`..`_7`.
+
+## Web Access Addon — COMPLETED
+
+Post-Phase-5 addon giving both text chat and Voice Mode the ability to
+answer with live, current information from the web — automatically, with
+source citations, and without touching any existing provider fallback
+system, voice/camera features, attachments, memory, or chat history.
+
+**Two different mechanisms for two different surfaces**, each reusing an
+existing key pool (no new environment variables, no new provider account):
+
+- **Text chat → Groq Compound.** The unified chat route's existing
+  `search` intent (previously routed to Gemini's search grounding) now
+  calls Groq's `groq/compound` model, which autonomously decides whether
+  to call its own built-in web-search tool and returns citations alongside
+  its answer. Authenticates with the exact same `FORGE_AI_GROQ_API_KEY_*`
+  pool and rotation cursor every ordinary text-chat reply already uses.
+- **Voice Mode → Gemini Live search grounding.** The Live API session
+  (already `gemini-3.1-flash-live-preview`) now declares Gemini's
+  `googleSearch` grounding tool at connect time, so the model can search
+  mid-call the same way it can in text chat, without switching models,
+  providers, or breaking the realtime audio/video pipeline. Authenticates
+  with the existing `GEMINI_VOICE_API_KEY_*` pool.
+
+### How "automatically decide when web access is needed" works
+
+- **Text chat:** `src/lib/server/chat-intent.ts`'s `SEARCH_RE` was broadened
+  from only explicit phrases ("search the web for…", "google…") to also
+  catch implicit current-info questions — current prices/stock quotes,
+  scores, weather, "who is the current president of…", "right now",
+  "as of today", breaking news, exchange rates, "is X still open/alive",
+  upcoming release/election dates, and more. Kept deliberately
+  conservative (tested against a batch of ordinary questions — "what is
+  the capital of France", "who was the first president", "explain how
+  photosynthesis works" — to confirm none of them false-positive into an
+  unnecessary search call) since a false negative just answers from the
+  model's own knowledge, same graceful behavior as before this addon.
+- **Voice Mode:** no client-side heuristic at all — `groq/compound`'s
+  text-chat equivalent doesn't apply here, so this instead leans on
+  Gemini Live's own tool-use judgment: with `googleSearch` declared for
+  the session, the model decides per-turn whether a question needs a
+  search, exactly the same autonomous decision Gemini already makes for
+  text-chat attachment turns with grounding enabled.
+
+### Citations
+
+Both paths return sources in the identical `{ title, uri }[]` shape the
+app already used for Gemini's text-chat grounding, so no new rendering
+code was needed — `ChatMessage.sources` and its existing "Sources" block
+under a reply (in `chat-panel.tsx`) work unchanged for Groq-sourced
+replies. Voice Mode gained a matching "Sources" block under grounded
+transcript turns in `voice-panel.tsx`, and those sources round-trip
+through the same `ChatMessage.sources` field when a voice conversation is
+saved — a voice search reply's citations survive a refresh exactly like a
+text-chat one's do.
+
+### Preserving context and existing behavior
+
+- **Attachment context across provider switches:** the Groq Compound
+  search branch folds `contextBlocks` (attachment memory extracted from
+  earlier turns — see the existing `buildAttachmentMemoryBlocks` /
+  Phase 3 attachment memory system) onto the last user message the same
+  way the plain Groq path already does, so a search reply still has
+  access to text/code extracted from files attached earlier in the
+  conversation. Attachment-carrying turns themselves are untouched and
+  still route straight to Gemini's native file understanding, exactly as
+  before — this addon only changed the *search-intent, no-attachment*
+  branch.
+- **Failure handling:** both search paths fall through to the normal
+  reply (Groq's regular chat model for text, Gemini Live continuing
+  without having searched for voice) on any failure — unconfigured keys,
+  rate limits, a bad response — never surfacing a search-specific error
+  for what the user experiences as ordinary chat, and never returning a
+  fabricated/demo answer in place of a real one.
+- **Everything else is untouched:** the Groq/Gemini fallback and key
+  rotation systems, delegate routing to CodeForge/StudyForge/PPTForge/
+  PromptForge, file packaging, attachment handling (images/PDF/DOCX/ZIP),
+  Voice Mode's mic/mute/camera/camera-switch/flashlight controls and
+  barge-in interruption handling, voice conversation persistence and the
+  Chats/Voice sidebar split, and memory/chat history all work exactly as
+  they did before this addon — verified by `npm run build` completing
+  with no new errors or warnings.
+
+### Files changed
+
+- `src/lib/server/groq-search.ts` — **new**. Groq Compound wrapper:
+  key-pool rotation (reusing `getForgeAiApiKeys`/`getForgeAiKeyLabels`),
+  `{ output, sources }` result shape matching the Gemini grounding
+  contract it replaces for text-chat search.
+- `src/lib/server/chat-intent.ts` — broadened `SEARCH_RE` for automatic
+  current-info detection (see above).
+- `src/app/api/chat/route.ts` — the `search` intent branch now calls
+  `runGroqSearch` instead of Gemini grounding; folds attachment context
+  onto the request; the Gemini attachment path and every delegate branch
+  are unchanged.
+- `src/app/api/voice-token/route.ts` — added `tools: [{ googleSearch: {} }]`
+  to the locked `liveConnectConstraints` session config.
+- `src/lib/use-voice-session.ts` — client-side `ai.live.connect` config
+  mirrors the same `tools` declaration; added `groundingMetadata`
+  extraction and per-turn source merging; `VoiceTurn` gained a `sources`
+  field.
+- `src/components/chat/voice-panel.tsx` — renders a "Sources" block under
+  grounded model turns (styled to match `chat-panel.tsx`'s); `sources`
+  round-trip through `messagesToTurns`/`turnsToMessages` for persistence.

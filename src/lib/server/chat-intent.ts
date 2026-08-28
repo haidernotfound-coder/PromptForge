@@ -103,12 +103,24 @@ const PROMPTFORGE_RE =
 const FILE_RE =
   /\b(zip (this|that|these|it)( up)?|package (this|that|these|it)( up)?|bundle (this|that|these)( up)?|(give|send) me (this|that|it) as a (file|download|zip)|save (this|that|it) as a (file|document|zip)|download (this|that|it) as( a)?( code)? files?|make (this|that|it) (a )?(downloadable|zip) file)\b/i;
 
-// Explicit "go check the web" requests — current-events/lookup phrasing.
+// Explicit "go check the web" requests, plus common implicit signals that a
+// question needs *current* information rather than the model's own
+// training-data knowledge — current prices/scores/weather/schedules,
+// "right now"/"today"/"this week" phrasing, and "who is the current X"
+// role questions. Broadened for the Web Access Addon's "automatically
+// decide when web access is needed" requirement — previously this only
+// matched explicit phrases like "search the web for…", so ordinary
+// current-info questions ("what's the weather in Tokyo", "who won the
+// game last night", "AAPL stock price") never triggered a search at all.
 // Kept conservative on purpose: a false negative just answers from the
-// model's own knowledge (status quo), while a false positive would silently
-// spend a Gemini grounded-search call on an ordinary question.
+// model's own knowledge (status quo, same as before this addon), while a
+// false positive spends a search call (now Groq Compound, see
+// lib/server/groq-search.ts) on a question that didn't need one — an
+// unnecessary search is a much smaller cost than that trade-off used to
+// be with Gemini grounding, but still worth avoiding on generic
+// definitional/historical/how-to questions.
 const SEARCH_RE =
-  /\b(search (the web|online|the internet) for|web search for|google|look up|what'?s the latest (on|news about)|latest news (on|about)|current(ly)? (happening|going on) (with|in)|what happened (with|to)|find (me )?(recent|current) (news|information) (on|about))\b/i;
+  /\b(search (the web|online|the internet) for|web search for|google|look up|what'?s the latest (on|news about)|latest news (on|about)|current(ly)? (happening|going on) (with|in)|what happened (with|to)|find (me )?(recent|current) (news|information) (on|about)|what'?s (the )?(current |today'?s )?(weather|temperature|forecast) (in|for|like)|(stock|share) price|price of (the )?(stock|share)|what'?s (the )?score (of|for|in)|who won (the|last night'?s|today'?s|yesterday'?s)|who is (the )?current (president|prime minister|ceo|ceo of|ruler|leader|governor|mayor) (of )?|right now\b|as of (today|now)|(this|last) (week'?s|month'?s) (news|headlines)|breaking news|exchange rate (for|between)|what time is it in|is .+ still (alive|open|available|in business|running)|when is the next|upcoming (election|game|match|release) (for|of|in)?)\b/i;
 
 function stripLeadIn(message: string, triggerRe: RegExp): string {
   return message.replace(triggerRe, "").replace(/^[\s:,-]+/, "").trim();

@@ -13,6 +13,7 @@ import {
   SwitchCamera,
   Zap,
   ZapOff,
+  Link as LinkIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useVoiceSession, type VoiceState, type VoiceTurn } from "@/lib/use-voice-session";
@@ -38,17 +39,20 @@ function messagesToTurns(messages: ChatMessage[]): VoiceTurn[] {
     role: m.role === "assistant" ? "model" : "user",
     text: m.content,
     final: true,
+    sources: m.sources,
   }));
 }
 
 /** The inverse of messagesToTurns, used to persist the live transcript back
  *  onto the conversation as turns finalize. Only final turns are persisted
  *  -- an in-progress (still-streaming) turn isn't durable yet and would
- *  just get overwritten a moment later anyway. */
+ *  just get overwritten a moment later anyway. Sources (Web Access Addon
+ *  — Gemini Live search grounding, see use-voice-session.ts) travel along
+ *  with the turn exactly like a text-chat search reply's sources. */
 function turnsToMessages(turns: VoiceTurn[]): ChatMessage[] {
   return turns
     .filter((t) => t.final && t.text.trim())
-    .map((t) => makeChatMessage(t.role === "model" ? "assistant" : "user", t.text));
+    .map((t) => makeChatMessage(t.role === "model" ? "assistant" : "user", t.text, undefined, { sources: t.sources }));
 }
 
 /** The animated orb -- ChatGPT-voice-style pulsing core, with distinct
@@ -262,6 +266,23 @@ export function VoicePanel({
               )}
             >
               {turn.text || "…"}
+              {turn.role === "model" && turn.sources && turn.sources.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-text-faint">Sources</span>
+                  {turn.sources.map((s) => (
+                    <a
+                      key={s.uri}
+                      href={s.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 truncate text-xs text-accent hover:underline"
+                    >
+                      <LinkIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{s.title}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

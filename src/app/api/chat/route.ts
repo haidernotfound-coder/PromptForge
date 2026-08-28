@@ -6,6 +6,7 @@ import { getAppSessionOrNull } from "@/lib/session";
 import { validateAttachmentPayload, type AttachmentRequestBody } from "@/lib/server/attachment-request";
 import { extractDocuments } from "@/lib/server/attachment-extract";
 import { runGeminiChat, type GeminiChatTurn } from "@/lib/server/gemini";
+import { runGroqSearch, type GroqSearchMessage } from "@/lib/server/groq-search";
 import { detectChatIntent } from "@/lib/server/chat-intent";
 import { buildFileFromText, toGeneratedFile, type GeneratedFile } from "@/lib/server/file-builder";
 
@@ -51,12 +52,28 @@ import { buildFileFromText, toGeneratedFile, type GeneratedFile } from "@/lib/se
  *    nothing to package, the reply's own text) into a downloadable
  *    .zip/code/.md file the same way -- purely local packaging (jszip,
  *    already a dependency), no extra model call.
- *  - A "search" intent ("search the web for…", "what's the latest on…")
- *    routes to Gemini with its built-in Google Search grounding tool
- *    enabled, reusing the exact same Gemini key pool every attachment
- *    turn already authenticates with -- no new search API, no new
- *    environment variable. Cited sources are returned as `sources` and
- *    rendered under the reply.
+ *  - A "search" intent ("search the web for…", "what's the latest on…",
+ *    or any of the broader current-info phrasings the Web Access Addon
+ *    adds — current prices, scores, weather, "who is the current…", etc.,
+ *    see lib/server/chat-intent.ts) routes to Groq's `groq/compound`
+ *    model, which autonomously calls its own built-in web-search tool.
+ *    Reuses the exact same FORGE_AI_GROQ_API_KEY_* pool and "forge_ai"
+ *    rotation cursor every non-search reply already authenticates with —
+ *    no new search API, no new environment variable, no new fallback
+ *    system. Cited sources are returned as `sources` and rendered under
+ *    the reply, same as every other sourced reply in this app. Falls
+ *    through to the normal reply below if Compound isn't configured or
+ *    the call fails, same "never break the chat" contract as every other
+ *    delegate.
+ *
+ * Web Access Addon (post-Phase-5) swapped this branch's provider from
+ * Gemini's googleSearch grounding to Groq Compound specifically for text
+ * chat — voice mode (src/app/api/voice-token/route.ts,
+ * lib/use-voice-session.ts) still uses Gemini Live's own googleSearch
+ * grounding tool, since that's the search mechanism the Live API actually
+ * supports mid-call. Gemini's googleSearch grounding remains available
+ * and still used for the attachment path below (lib/server/gemini.ts) —
+ * only the *search-intent* branch moved providers.
  */
 
 export const runtime = "nodejs";
@@ -335,44 +352,56 @@ export async function POST(request: Request) {
       // Nothing to package yet — fall through to a normal reply below.
     }
 
-    // --- Phase 4: web search — grounds the reply in live Google Search
-    // results via Gemini's own search tool (see lib/server/gemini.ts).
-    // Falls through to the normal reply below if Gemini isn't configured
-    // or the grounded call fails, same "never break the chat" contract as
-    // every other delegate.
-    if (intent.kind === "search" && isGeminiConfigured()) {
-      const geminiHistory: GeminiChatTurn[] = windowedMessages.map((m) => ({ role: m.role, content: m.content }));
-      const geminiKeys = getGeminiApiKeys();
-      const geminiKeyLabels = getGeminiKeyLabels();
-      const startIndex = getLastGoodGeminiKeyIndex();
-
-      const { result, goodKeyIndex, attempts } = await runGeminiChat(
+    // --- Web Access Addon: web search — grounds the reply in live web
+    // search results via Groq's `groq/compound` system (see
+    // lib/server/groq-search.ts). Falls through to the normal reply below
+    // if Compound isn't configured or the call fails, same "never break
+    // the chat" contract as every other delegate.
+    if (intent.kind === "search" && isForgeAiConfigured()) {
+      const contextText = (body.contextBlocks ?? []).join("\n\n");
+      // Same "fold context onto the last user turn" convention the plain
+      // Groq path further below uses for attachment memory/context —
+      // keeps attachment context available even when a turn is answered
+      // by Compound instead of the general chat model.
+      const searchMessages: GroqSearchMessage[] = [
         {
-          keys: geminiKeys,
-          systemInstruction: `${SYSTEM_PROMPT} You have live web search available for this reply — use it to answer with current information, and briefly mention when something is time-sensitive.`,
-          history: geminiHistory,
-          extraContextText: (body.contextBlocks ?? []).join("\n\n"),
-          enableWebSearch: true,
+          role: "system",
+          content: `${SYSTEM_PROMPT} You have live web search available for this reply — use it to answer with current information, and briefly mention when something is time-sensitive.`,
         },
-        startIndex
-      );
+        ...windowedMessages.map((m, idx) => {
+          const isLastUser = idx === windowedMessages.length - 1 && m.role === "user";
+          return {
+            role: m.role,
+            content: isLastUser && contextText ? `${m.content}\n\n${contextText}` : m.content,
+          };
+        }),
+      ];
 
-      for (const attempt of attempts) {
-        await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[attempt.keyIndex] ?? `key-${attempt.keyIndex + 1}`, success: false });
-      }
+      const groqKeys = getForgeAiApiKeys();
+      const groqKeyLabels = getForgeAiKeyLabels();
+      const startIndex = getLastGoodKeyIndex("forge_ai");
+
+      const { result, goodKeyIndex } = await runGroqSearch(groqKeys, searchMessages, startIndex);
 
       if (result.ok) {
         if (goodKeyIndex !== undefined) {
-          setLastGoodGeminiKeyIndex(goodKeyIndex);
-          await recordGroqUsage({ pool: "gemini", keyLabel: geminiKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
+          setLastGoodKeyIndex("forge_ai", goodKeyIndex);
+          await recordGroqUsage({ pool: "forge_ai", keyLabel: groqKeyLabels[goodKeyIndex] ?? `key-${goodKeyIndex + 1}`, success: true });
         }
         await recordEvent({
           userLabel: session?.email,
           eventType: "forge_ai.chat",
           success: true,
-          metadata: { surface: "unified_chat", delegatedTo: "search" },
+          metadata: { surface: "unified_chat", delegatedTo: "search", provider: "groq_compound" },
         });
-        return NextResponse.json({ output: result.output, sources: result.sources ?? [] });
+        return NextResponse.json({ output: result.output, sources: result.sources, attachmentContext });
+      }
+      if (!result.ok) {
+        await recordGroqUsage({
+          pool: "forge_ai",
+          keyLabel: groqKeyLabels[startIndex] ?? `key-${startIndex + 1}`,
+          success: false,
+        });
       }
       // Search call failed — fall through to the normal reply below rather
       // than surfacing a search-specific error for what's still just chat.

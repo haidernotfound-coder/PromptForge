@@ -21,6 +21,13 @@ import { getLastGoodGeminiVoiceKeyIndex, setLastGoodGeminiVoiceKeyIndex } from "
  * (see lib/server/gemini.ts): start from whichever key last worked, retry
  * the next key on a transient/quota/auth failure, remember whichever key
  * succeeded as the new starting point.
+ *
+ * Web Access Addon (post-Phase-5): the locked session config below also
+ * declares Gemini Live's built-in Google Search grounding tool, so Voice
+ * Mode can answer with current information mid-call the same way text
+ * chat can (see the "search" intent in src/app/api/chat/route.ts) —
+ * different provider/mechanism per surface (Groq Compound for text,
+ * Gemini Live grounding for voice), same idea.
  */
 
 export const runtime = "nodejs";
@@ -90,6 +97,24 @@ export async function POST() {
             model: VOICE_MODEL,
             config: {
               responseModalities: [Modality.AUDIO],
+              // Web Access Addon: Gemini Live's own Grounding with Google
+              // Search tool, enabled the same way the text-chat attachment
+              // path enables it for plain generateContent calls (see
+              // lib/server/gemini.ts) -- just set at session-connect time
+              // instead of per-request, since a Live session is one
+              // long-lived connection rather than one-shot calls. The
+              // model decides per-turn whether to actually search;
+              // nothing here forces every reply through it. Locked
+              // server-side in the token (not left for the client to
+              // request) for the same reason the model itself is locked
+              // here -- the client can't renegotiate a different tool set
+              // even if the token value were tampered with. This is safe
+              // to combine with the rest of this config because it's the
+              // *only* tool declared for this session: the Gemini API
+              // does not support mixing search tools with non-search
+              // tools (e.g. function calling) in the same session, and
+              // Voice Mode declares no function-calling tools.
+              tools: [{ googleSearch: {} }],
               // Keep system-instruction customization possible without
               // trusting the client to supply it -- locked server-side.
               // (Left unset here: the session's default persona is fine
