@@ -235,6 +235,7 @@ export interface Database {
           title: string;
           auto_titled: boolean;
           kind: string;
+          pinned: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -244,6 +245,7 @@ export interface Database {
           title?: string;
           auto_titled?: boolean;
           kind?: string;
+          pinned?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -253,6 +255,7 @@ export interface Database {
           title?: string;
           auto_titled?: boolean;
           kind?: string;
+          pinned?: boolean;
           created_at?: string;
           updated_at?: string;
         };

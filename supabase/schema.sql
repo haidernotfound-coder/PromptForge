@@ -264,6 +264,7 @@ create table if not exists public.chat_conversations (
   title text not null default 'New chat',
   auto_titled boolean not null default true,
   kind text not null default 'text' check (kind in ('text', 'voice')),
+  pinned boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

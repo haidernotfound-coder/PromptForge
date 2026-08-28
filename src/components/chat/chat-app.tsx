@@ -47,15 +47,27 @@ function ChatBrand() {
 /** Pinned account row at the bottom of the sidebar — avatar/name/email via
  *  the existing DashboardUserMenu (profile, sign out) plus a theme toggle,
  *  so the whole account surface is reachable without leaving /chat. */
-function ChatProfileFooter({ session, configured }: { session: AppSession; configured: boolean | null }) {
+function ChatProfileFooter({
+  session,
+  configured,
+}: {
+  session: AppSession;
+  configured: boolean | null;
+}) {
   return (
     <div className="flex items-center justify-between gap-1.5 rounded-lg border border-border bg-surface-raised/60 px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <DashboardUserMenu session={session} />
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-[13px] font-medium text-text">{session.name}</p>
+          <p className="truncate text-[13px] font-medium text-text">
+            {session.name}
+          </p>
           <p className="truncate text-[11px] text-text-faint">
-            {configured === false ? "Demo mode" : configured === true ? "Live" : "\u00A0"}
+            {configured === false
+              ? "Demo mode"
+              : configured === true
+                ? "Live"
+                : "\u00A0"}
           </p>
         </div>
       </div>
@@ -71,12 +83,16 @@ export function ChatApp({
   session: AppSession;
   disabledReason?: string;
 }) {
-  const [conversations, setConversations] = React.useState<ChatConversation[]>([]);
+  const [conversations, setConversations] = React.useState<ChatConversation[]>(
+    [],
+  );
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
-  const [voiceConfigured, setVoiceConfigured] = React.useState<boolean | null>(null);
+  const [voiceConfigured, setVoiceConfigured] = React.useState<boolean | null>(
+    null,
+  );
   // Which tab is selected. Normally this just mirrors the active
   // conversation's kind (selecting a voice chat in the sidebar switches
   // to the Voice tab automatically, and vice versa) -- it only becomes
@@ -149,9 +165,11 @@ export function ChatApp({
           // only fall back to the newest conversation if the previously
           // active one no longer exists (e.g. deleted on another device).
           setActiveId((prevActive) =>
-            reconciled.some((c) => c.id === prevActive) ? prevActive : reconciled[0]?.id ?? null
+            reconciled.some((c) => c.id === prevActive)
+              ? prevActive
+              : (reconciled[0]?.id ?? null),
           );
-        }
+        },
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,7 +185,8 @@ export function ChatApp({
     // Respects whichever tab is currently selected -- "New chat" while on
     // the Voice tab starts a fresh voice conversation instead of a text
     // one, and vice versa.
-    const fresh = tab === "voice" ? createVoiceConversation() : createChatConversation();
+    const fresh =
+      tab === "voice" ? createVoiceConversation() : createChatConversation();
     persist([fresh, ...conversations], fresh);
     setActiveId(fresh.id);
     setMobileOpen(false);
@@ -187,14 +206,28 @@ export function ChatApp({
   function handleTabChange(next: "chat" | "voice") {
     setTab(next);
     if (active?.kind === next || (next === "chat" && !active?.kind)) return;
-    const existing = conversations.find((c) => (next === "voice" ? c.kind === "voice" : c.kind !== "voice"));
+    const existing = conversations.find((c) =>
+      next === "voice" ? c.kind === "voice" : c.kind !== "voice",
+    );
     if (existing) {
       setActiveId(existing.id);
     } else {
-      const fresh = next === "voice" ? createVoiceConversation() : createChatConversation();
+      const fresh =
+        next === "voice" ? createVoiceConversation() : createChatConversation();
       persist([fresh, ...conversations], fresh);
       setActiveId(fresh.id);
     }
+  }
+
+  function handleTogglePin(id: string) {
+    const now = new Date().toISOString();
+    let changed: ChatConversation | undefined;
+    const next = conversations.map((c) => {
+      if (c.id !== id) return c;
+      changed = { ...c, pinned: !c.pinned, updatedAt: now };
+      return changed;
+    });
+    persist(next, changed);
   }
 
   function handleRename(id: string, title: string) {
@@ -218,8 +251,8 @@ export function ChatApp({
       remaining.length > 0
         ? null
         : deleted?.kind === "voice"
-        ? createVoiceConversation()
-        : createChatConversation();
+          ? createVoiceConversation()
+          : createChatConversation();
     const next = replacement ? [...remaining, replacement] : remaining;
     persist(next, replacement ?? undefined);
     syncConversationDeleteToCloud(id);
@@ -233,8 +266,17 @@ export function ChatApp({
       .map((c) => {
         if (c.id !== id) return c;
         const firstUser = messages.find((m) => m.role === "user");
-        const title = c.autoTitled && firstUser ? titleFromMessage(firstUser.content) : c.title;
-        changed = { ...c, messages, title, autoTitled: c.autoTitled && !firstUser, updatedAt: now };
+        const title =
+          c.autoTitled && firstUser
+            ? titleFromMessage(firstUser.content)
+            : c.title;
+        changed = {
+          ...c,
+          messages,
+          title,
+          autoTitled: c.autoTitled && !firstUser,
+          updatedAt: now,
+        };
         return changed;
       })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -253,6 +295,7 @@ export function ChatApp({
         onNew={handleNew}
         onRename={handleRename}
         onDelete={handleDelete}
+        onTogglePin={handleTogglePin}
         className="min-h-0 flex-1"
       />
       <ChatProfileFooter session={session} configured={configured} />
@@ -260,11 +303,14 @@ export function ChatApp({
   );
 
   const modeTabs = (size: "sm" | "md" = "md") => (
-    <Tabs value={tab} onValueChange={(v) => handleTabChange(v as "chat" | "voice")}>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => handleTabChange(v as "chat" | "voice")}
+    >
       <TabsList
         className={cn(
           "gap-0.5 rounded-full border-transparent bg-surface p-0.5",
-          size === "sm" ? "h-8" : "h-8"
+          size === "sm" ? "h-8" : "h-8",
         )}
       >
         <TabsTrigger
@@ -311,23 +357,37 @@ export function ChatApp({
               </Dialog.Portal>
             </Dialog.Root>
             <span className="truncate text-sm font-medium text-text">
-              {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
+              {tab === "voice"
+                ? (active?.title ?? "Voice Mode")
+                : (active?.title ?? "AI Chat")}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {tab === "chat" && configured === false && <Badge variant="brass">Demo</Badge>}
-            {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
-            {tab === "chat" && configured === null && <span className="h-5 w-12" />}
+            {tab === "chat" && configured === false && (
+              <Badge variant="brass">Demo</Badge>
+            )}
+            {tab === "chat" && configured === true && (
+              <Badge variant="success">Live</Badge>
+            )}
+            {tab === "chat" && configured === null && (
+              <span className="h-5 w-12" />
+            )}
           </div>
         </header>
 
         <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 md:flex">
           <span className="truncate text-sm font-medium text-text-muted">
-            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
+            {tab === "voice"
+              ? (active?.title ?? "Voice Mode")
+              : (active?.title ?? "AI Chat")}
           </span>
           <div className="flex items-center gap-2.5">
-            {tab === "chat" && configured === false && <Badge variant="brass">Demo mode</Badge>}
-            {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+            {tab === "chat" && configured === false && (
+              <Badge variant="brass">Demo mode</Badge>
+            )}
+            {tab === "chat" && configured === true && (
+              <Badge variant="success">Live</Badge>
+            )}
             {modeTabs()}
           </div>
         </header>
@@ -346,20 +406,33 @@ export function ChatApp({
                 key={active.id}
                 conversation={active}
                 configured={voiceConfigured}
-                onMessagesChange={(messages) => handleMessagesChange(active.id, messages)}
+                onMessagesChange={(messages) =>
+                  handleMessagesChange(active.id, messages)
+                }
               />
             )
           ) : disabledReason ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <TriangleAlert className="h-8 w-8 text-brass" />
-              <h2 className="font-display text-lg font-semibold">AI Chat is temporarily unavailable</h2>
-              <p className="max-w-sm text-sm text-text-muted">{disabledReason}</p>
+              <h2 className="font-display text-lg font-semibold">
+                AI Chat is temporarily unavailable
+              </h2>
+              <p className="max-w-sm text-sm text-text-muted">
+                {disabledReason}
+              </p>
             </div>
           ) : !hydrated ? null : active ? (
-            <ChatPanel conversation={active} onMessagesChange={(messages) => handleMessagesChange(active.id, messages)} />
+            <ChatPanel
+              conversation={active}
+              onMessagesChange={(messages) =>
+                handleMessagesChange(active.id, messages)
+              }
+            />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm text-text-muted">Start a new conversation to begin.</p>
+              <p className="text-sm text-text-muted">
+                Start a new conversation to begin.
+              </p>
               <button
                 type="button"
                 onClick={handleNew}

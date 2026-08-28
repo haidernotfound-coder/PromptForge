@@ -80,13 +80,19 @@ export interface ChatConversation {
    *  with an audio icon and reopened into Voice Mode instead of the text
    *  panel. Defaults to "text" for conversations saved before this existed. */
   kind?: "text" | "voice";
+  /** Pinned conversations are pulled to their own section at the top of
+   *  the sidebar, above the date groups. Synced like any other field so it
+   *  follows the account across devices. Defaults to false for
+   *  conversations saved before this existed. */
+  pinned?: boolean;
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
 }
 
 function id(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    return crypto.randomUUID();
   return `id_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
@@ -96,7 +102,8 @@ function isValidMessage(m: unknown): m is ChatMessage {
   return (
     Boolean(m) &&
     typeof m === "object" &&
-    ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+    ((m as ChatMessage).role === "user" ||
+      (m as ChatMessage).role === "assistant") &&
     typeof (m as ChatMessage).content === "string" &&
     typeof (m as ChatMessage).id === "string" &&
     typeof (m as ChatMessage).createdAt === "string"
@@ -127,7 +134,12 @@ export function loadChatConversations(): ChatConversation[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(isValidConversation)
-      .map((c) => ({ ...c, autoTitled: c.autoTitled ?? false, kind: c.kind ?? "text" }))
+      .map((c) => ({
+        ...c,
+        autoTitled: c.autoTitled ?? false,
+        kind: c.kind ?? "text",
+        pinned: c.pinned ?? false,
+      }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {
     return [];
@@ -173,7 +185,7 @@ export function makeChatMessage(
   role: ChatMessage["role"],
   content: string,
   attachments?: ChatAttachment[],
-  extras?: { files?: ChatMessage["files"]; sources?: ChatMessage["sources"] }
+  extras?: { files?: ChatMessage["files"]; sources?: ChatMessage["sources"] },
 ): ChatMessage {
   return {
     id: id(),
@@ -218,8 +230,15 @@ const MAX_MEMORY_TOTAL_CHARS = 20_000;
 export function buildAttachmentMemoryBlocks(messages: ChatMessage[]): string[] {
   const withContext = messages
     .flatMap((m) => m.attachments ?? [])
-    .filter((a): a is { name: string; size: number; kind: string; contextText: string } =>
-      typeof a.contextText === "string" && a.contextText.trim().length > 0
+    .filter(
+      (
+        a,
+      ): a is {
+        name: string;
+        size: number;
+        kind: string;
+        contextText: string;
+      } => typeof a.contextText === "string" && a.contextText.trim().length > 0,
     );
 
   // Most recent first, then de-duplicate by filename (a later re-upload of
@@ -236,12 +255,15 @@ export function buildAttachmentMemoryBlocks(messages: ChatMessage[]): string[] {
   const blocks: string[] = [];
   let total = 0;
   for (const a of deduped) {
-    const text = a.contextText.length > MAX_MEMORY_CHARS_PER_FILE
-      ? `${a.contextText.slice(0, MAX_MEMORY_CHARS_PER_FILE)}\n[...truncated]`
-      : a.contextText;
+    const text =
+      a.contextText.length > MAX_MEMORY_CHARS_PER_FILE
+        ? `${a.contextText.slice(0, MAX_MEMORY_CHARS_PER_FILE)}\n[...truncated]`
+        : a.contextText;
     if (total + text.length > MAX_MEMORY_TOTAL_CHARS) break;
     total += text.length;
-    blocks.push(`<file name="${a.name}" from="earlier in this conversation">\n${text}\n</file>`);
+    blocks.push(
+      `<file name="${a.name}" from="earlier in this conversation">\n${text}\n</file>`,
+    );
   }
   return blocks;
 }
@@ -256,14 +278,15 @@ export function buildAttachmentMemoryBlocks(messages: ChatMessage[]): string[] {
  *  more useful to the user than a fabricated response. */
 export async function sendChatMessage(
   history: ChatMessage[],
-  attachments: ChatAttachment[] = []
+  attachments: ChatAttachment[] = [],
 ): Promise<{
   output: string;
   attachmentContext: { name: string; text: string }[];
   files: ChatMessage["files"];
   sources: ChatMessage["sources"];
 }> {
-  const { contextBlocks, images, documents, errors } = buildAttachmentPayload(attachments);
+  const { contextBlocks, images, documents, errors } =
+    buildAttachmentPayload(attachments);
   if (errors.length > 0) throw new Error(errors.join(" "));
 
   // Everything except the message currently being sent — that one's own
@@ -286,7 +309,9 @@ export async function sendChatMessage(
     const attachmentContext = Array.isArray(data.attachmentContext)
       ? data.attachmentContext.filter(
           (d: unknown): d is { name: string; text: string } =>
-            Boolean(d) && typeof (d as { name?: unknown }).name === "string" && typeof (d as { text?: unknown }).text === "string"
+            Boolean(d) &&
+            typeof (d as { name?: unknown }).name === "string" &&
+            typeof (d as { text?: unknown }).text === "string",
         )
       : [];
     const files: ChatMessage["files"] = Array.isArray(data.files)
@@ -296,18 +321,24 @@ export async function sendChatMessage(
             typeof (f as { name?: unknown }).name === "string" &&
             typeof (f as { mimeType?: unknown }).mimeType === "string" &&
             typeof (f as { dataUrl?: unknown }).dataUrl === "string" &&
-            typeof (f as { size?: unknown }).size === "number"
+            typeof (f as { size?: unknown }).size === "number",
         )
       : undefined;
     const sources: ChatMessage["sources"] = Array.isArray(data.sources)
       ? data.sources.filter(
           (s: unknown): s is NonNullable<ChatMessage["sources"]>[number] =>
-            Boolean(s) && typeof (s as { title?: unknown }).title === "string" && typeof (s as { uri?: unknown }).uri === "string"
+            Boolean(s) &&
+            typeof (s as { title?: unknown }).title === "string" &&
+            typeof (s as { uri?: unknown }).uri === "string",
         )
       : undefined;
     return { output: data.output.trim(), attachmentContext, files, sources };
   }
-  throw new Error(typeof data.error === "string" ? data.error : `AI request failed (${res.status})`);
+  throw new Error(
+    typeof data.error === "string"
+      ? data.error
+      : `AI request failed (${res.status})`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +354,7 @@ export async function sendChatMessage(
  *  one side (created offline, or not yet synced elsewhere) is kept as-is. */
 export function reconcileConversations(
   server: ChatConversation[],
-  local: ChatConversation[]
+  local: ChatConversation[],
 ): ChatConversation[] {
   const byId = new Map<string, ChatConversation>();
   for (const c of local) byId.set(c.id, c);
@@ -335,7 +366,9 @@ export function reconcileConversations(
     // else: local is newer (not pushed yet) — keep it, the pending push
     // will bring the server up to date shortly.
   }
-  return Array.from(byId.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return Array.from(byId.values()).sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
 }
 
 let cloudSyncStarted = false;
@@ -355,7 +388,7 @@ function schedulePush(conversation: ChatConversation) {
     setTimeout(() => {
       pushTimers.delete(conversation.id);
       void pushChatConversation(conversation);
-    }, PUSH_DEBOUNCE_MS)
+    }, PUSH_DEBOUNCE_MS),
   );
 }
 
@@ -371,7 +404,7 @@ function schedulePush(conversation: ChatConversation) {
  *  module needing to know about React state. */
 export async function initChatCloudSync(
   getLocal: () => ChatConversation[],
-  onRemoteChange: (reconciled: ChatConversation[]) => void
+  onRemoteChange: (reconciled: ChatConversation[]) => void,
 ): Promise<void> {
   if (cloudSyncStarted || typeof window === "undefined") return;
   if (!isSupabaseConfigured()) return;
@@ -396,7 +429,10 @@ export async function initChatCloudSync(
     const remoteIds = new Set(remote.map((c) => c.id));
     for (const c of reconciled) {
       const serverCopy = remote.find((r) => r.id === c.id);
-      if (!remoteIds.has(c.id) || (serverCopy && serverCopy.updatedAt < c.updatedAt)) {
+      if (
+        !remoteIds.has(c.id) ||
+        (serverCopy && serverCopy.updatedAt < c.updatedAt)
+      ) {
         void pushChatConversation(c);
       }
     }

@@ -31,6 +31,7 @@ interface ConversationRow {
   title: string;
   auto_titled: boolean;
   kind: string;
+  pinned: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -49,7 +50,10 @@ interface MessageRow {
 export async function GET() {
   const supabase = await getSupabaseServerClient();
   if (!supabase) {
-    return NextResponse.json({ error: "Backend not configured" }, { status: 501 });
+    return NextResponse.json(
+      { error: "Backend not configured" },
+      { status: 501 },
+    );
   }
 
   const {
@@ -59,23 +63,26 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const [{ data: convRows, error: convErr }, { data: msgRows, error: msgErr }] = await Promise.all([
-    supabase
-      .from("chat_conversations")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .returns<ConversationRow[]>(),
-    supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true })
-      .returns<MessageRow[]>(),
-  ]);
+  const [{ data: convRows, error: convErr }, { data: msgRows, error: msgErr }] =
+    await Promise.all([
+      supabase
+        .from("chat_conversations")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .returns<ConversationRow[]>(),
+      supabase
+        .from("chat_messages")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .returns<MessageRow[]>(),
+    ]);
 
-  if (convErr) return NextResponse.json({ error: convErr.message }, { status: 500 });
-  if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
+  if (convErr)
+    return NextResponse.json({ error: convErr.message }, { status: 500 });
+  if (msgErr)
+    return NextResponse.json({ error: msgErr.message }, { status: 500 });
 
   const messagesByConversation = new Map<string, ChatMessage[]>();
   for (const m of msgRows ?? []) {
@@ -97,6 +104,7 @@ export async function GET() {
     title: c.title,
     autoTitled: c.auto_titled,
     kind: (c.kind as ChatConversation["kind"]) ?? "text",
+    pinned: c.pinned ?? false,
     messages: messagesByConversation.get(c.id) ?? [],
     createdAt: c.created_at,
     updatedAt: c.updated_at,
@@ -108,7 +116,10 @@ export async function GET() {
 export async function PUT(request: Request) {
   const supabase = await getSupabaseServerClient();
   if (!supabase) {
-    return NextResponse.json({ error: "Backend not configured" }, { status: 501 });
+    return NextResponse.json(
+      { error: "Backend not configured" },
+      { status: 501 },
+    );
   }
 
   const {
@@ -125,20 +136,32 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body || typeof body.id !== "string" || typeof body.title !== "string" || !Array.isArray(body.messages)) {
-    return NextResponse.json({ error: "Malformed conversation payload" }, { status: 400 });
+  if (
+    !body ||
+    typeof body.id !== "string" ||
+    typeof body.title !== "string" ||
+    !Array.isArray(body.messages)
+  ) {
+    return NextResponse.json(
+      { error: "Malformed conversation payload" },
+      { status: 400 },
+    );
   }
 
-  const { error: convError } = await supabase.from("chat_conversations").upsert({
-    id: body.id,
-    user_id: user.id,
-    title: body.title,
-    auto_titled: body.autoTitled,
-    kind: body.kind ?? "text",
-    created_at: body.createdAt,
-    updated_at: body.updatedAt,
-  });
-  if (convError) return NextResponse.json({ error: convError.message }, { status: 500 });
+  const { error: convError } = await supabase
+    .from("chat_conversations")
+    .upsert({
+      id: body.id,
+      user_id: user.id,
+      title: body.title,
+      auto_titled: body.autoTitled,
+      kind: body.kind ?? "text",
+      pinned: body.pinned ?? false,
+      created_at: body.createdAt,
+      updated_at: body.updatedAt,
+    });
+  if (convError)
+    return NextResponse.json({ error: convError.message }, { status: 500 });
 
   // Messages are always saved as a full list from the client (see
   // saveConversation in src/lib/chat.ts) — replace this conversation's rows
@@ -149,7 +172,8 @@ export async function PUT(request: Request) {
     .delete()
     .eq("conversation_id", body.id)
     .eq("user_id", user.id);
-  if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
+  if (delError)
+    return NextResponse.json({ error: delError.message }, { status: 500 });
 
   if (body.messages.length > 0) {
     const { error: insError } = await supabase.from("chat_messages").insert(
@@ -163,9 +187,10 @@ export async function PUT(request: Request) {
         files: m.files ?? null,
         sources: m.sources ?? null,
         created_at: m.createdAt,
-      }))
+      })),
     );
-    if (insError) return NextResponse.json({ error: insError.message }, { status: 500 });
+    if (insError)
+      return NextResponse.json({ error: insError.message }, { status: 500 });
   }
 
   // Re-touch updated_at explicitly to the client's timestamp — the DB
@@ -184,7 +209,10 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const supabase = await getSupabaseServerClient();
   if (!supabase) {
-    return NextResponse.json({ error: "Backend not configured" }, { status: 501 });
+    return NextResponse.json(
+      { error: "Backend not configured" },
+      { status: 501 },
+    );
   }
 
   const {
@@ -202,8 +230,13 @@ export async function DELETE(request: Request) {
 
   // Messages cascade-delete via the FK, so deleting the conversation row is
   // enough — scoped by user_id too, belt-and-suspenders with RLS.
-  const { error } = await supabase.from("chat_conversations").delete().eq("id", id).eq("user_id", user.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { error } = await supabase
+    .from("chat_conversations")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }
