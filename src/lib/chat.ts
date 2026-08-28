@@ -8,13 +8,35 @@
  * system prompt (see that route for details) — no new provider/fallback
  * system, no new environment variables.
  *
- * Persistence is local to this browser for the same reason StudyForge/
- * CodeForge chat history is: it's chat scratch space, not synced
- * workspace data. Phase 2+ can layer real per-account persistence on top
- * without changing this module's shape.
+ * Cross-device sync (Phase 17)
+ * -----------------------------
+ * Chat history used to be local to whichever browser created it — two
+ * devices signed into the same account saw two unrelated histories,
+ * because `loadChatConversations`/`saveChatConversations` only ever
+ * touched `window.localStorage`.
+ *
+ * The fix keeps localStorage as a *cache* (so the sidebar still renders
+ * instantly, offline, or in demo mode) but makes `chat_conversations` /
+ * `chat_messages` in Supabase (see supabase/migrations/phase17_chat_sync.sql)
+ * the source of truth whenever the visitor is signed into a real account:
+ * `initChatCloudSync` pulls the server's copy down on mount, reconciles it
+ * against whatever's cached locally by `updatedAt` (never letting a stale
+ * local copy overwrite a newer server one, and vice versa), then every
+ * subsequent local change is debounced and pushed per-conversation via
+ * `/api/chat-history` (see chat-cloud-sync.ts) so a rename on one device
+ * and a new message on another converge without either clobbering the
+ * other. Demo mode (Supabase not configured) or a demo-only session falls
+ * back to the previous local-only behavior untouched.
  */
 
 import { buildAttachmentPayload, type ChatAttachment } from "@/lib/attachments";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  pullChatConversations,
+  pushChatConversation,
+  deleteChatConversationRemote,
+} from "@/lib/chat-cloud-sync";
 
 export interface ChatMessage {
   id: string;
@@ -286,4 +308,133 @@ export async function sendChatMessage(
     return { output: data.output.trim(), attachmentContext, files, sources };
   }
   throw new Error(typeof data.error === "string" ? data.error : `AI request failed (${res.status})`);
+}
+
+// ---------------------------------------------------------------------------
+// Cloud sync (Phase 17)
+// ---------------------------------------------------------------------------
+
+/** Merges the server's conversations with whatever's cached locally,
+ *  conversation-by-conversation, keeping whichever side has the newer
+ *  `updatedAt` — never blindly preferring one source, so a stale local
+ *  cache can't clobber a newer server write (a message sent from another
+ *  device) and a server copy that hasn't caught up yet can't clobber a
+ *  local edit that just hasn't pushed. A conversation that only exists on
+ *  one side (created offline, or not yet synced elsewhere) is kept as-is. */
+export function reconcileConversations(
+  server: ChatConversation[],
+  local: ChatConversation[]
+): ChatConversation[] {
+  const byId = new Map<string, ChatConversation>();
+  for (const c of local) byId.set(c.id, c);
+  for (const s of server) {
+    const l = byId.get(s.id);
+    if (!l || s.updatedAt >= l.updatedAt) {
+      byId.set(s.id, s);
+    }
+    // else: local is newer (not pushed yet) — keep it, the pending push
+    // will bring the server up to date shortly.
+  }
+  return Array.from(byId.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+let cloudSyncStarted = false;
+const pushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const PUSH_DEBOUNCE_MS = 800;
+const POLL_INTERVAL_MS = 15_000;
+
+/** Debounced per-conversation push — coalesces rapid edits (typing,
+ *  streaming tokens) into one request per conversation instead of one per
+ *  keystroke, without holding up edits to *other* conversations behind the
+ *  same timer the way a single whole-list debounce would. */
+function schedulePush(conversation: ChatConversation) {
+  const existing = pushTimers.get(conversation.id);
+  if (existing) clearTimeout(existing);
+  pushTimers.set(
+    conversation.id,
+    setTimeout(() => {
+      pushTimers.delete(conversation.id);
+      void pushChatConversation(conversation);
+    }, PUSH_DEBOUNCE_MS)
+  );
+}
+
+/** Call once from a client component mounted behind auth (the chat app
+ *  shell) to turn on cross-device sync for the current session. Safe to
+ *  call repeatedly — only the first call does anything. No-ops entirely in
+ *  demo mode (Supabase not configured) or when signed out, in which case
+ *  chat history stays exactly as local-only as it always was.
+ *
+ *  `onRemoteChange` is called with the reconciled list whenever the
+ *  server's copy is pulled (initial load, and every subsequent poll) so
+ *  the caller can update UI state + the localStorage cache without this
+ *  module needing to know about React state. */
+export async function initChatCloudSync(
+  getLocal: () => ChatConversation[],
+  onRemoteChange: (reconciled: ChatConversation[]) => void
+): Promise<void> {
+  if (cloudSyncStarted || typeof window === "undefined") return;
+  if (!isSupabaseConfigured()) return;
+
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  cloudSyncStarted = true;
+
+  async function syncFromServer() {
+    const remote = await pullChatConversations();
+    if (remote === null) return; // pull failed / not configured — keep local as-is
+    const reconciled = reconcileConversations(remote, getLocal());
+    onRemoteChange(reconciled);
+    // Anything that was only local (created offline, or newer than the
+    // server's copy) needs pushing up so the next pull elsewhere sees it.
+    const remoteIds = new Set(remote.map((c) => c.id));
+    for (const c of reconciled) {
+      const serverCopy = remote.find((r) => r.id === c.id);
+      if (!remoteIds.has(c.id) || (serverCopy && serverCopy.updatedAt < c.updatedAt)) {
+        void pushChatConversation(c);
+      }
+    }
+  }
+
+  await syncFromServer();
+
+  // Cross-device convergence: without a realtime subscription, a periodic
+  // pull is what lets a second device's edits show up here without a
+  // manual refresh. Paused while the tab is hidden so a background tab
+  // doesn't keep polling.
+  const interval = setInterval(() => {
+    if (document.visibilityState === "visible") void syncFromServer();
+  }, POLL_INTERVAL_MS);
+  window.addEventListener("beforeunload", () => clearInterval(interval));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void syncFromServer();
+  });
+}
+
+/** Push a single conversation's create/rename/message change to the
+ *  server, debounced. No-ops silently when cloud sync isn't active (demo
+ *  mode, signed out, or not yet initialized) — the local save this always
+ *  runs alongside is what persists in that case. */
+export function syncConversationToCloud(conversation: ChatConversation): void {
+  if (!cloudSyncStarted) return;
+  schedulePush(conversation);
+}
+
+/** Push a conversation delete to the server immediately (deletes aren't
+ *  worth debouncing — there's nothing further to coalesce with). No-ops
+ *  when cloud sync isn't active, same as syncConversationToCloud. */
+export function syncConversationDeleteToCloud(id: string): void {
+  if (!cloudSyncStarted) return;
+  const pending = pushTimers.get(id);
+  if (pending) {
+    clearTimeout(pending);
+    pushTimers.delete(id);
+  }
+  void deleteChatConversationRemote(id);
 }

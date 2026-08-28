@@ -254,3 +254,72 @@ drop trigger if exists set_workspaces_updated_at on public.workspaces;
 create trigger set_workspaces_updated_at
   before update on public.workspaces
   for each row execute procedure public.set_updated_at();
+
+-- Chat history (Phase 17) --------------------------------------------------
+
+
+create table if not exists public.chat_conversations (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null default 'New chat',
+  auto_titled boolean not null default true,
+  kind text not null default 'text' check (kind in ('text', 'voice')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.chat_conversations enable row level security;
+
+create policy "Chat conversations are managed by owner"
+  on public.chat_conversations for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists chat_conversations_user_id_idx
+  on public.chat_conversations(user_id);
+
+create table if not exists public.chat_messages (
+  id uuid primary key,
+  conversation_id uuid not null references public.chat_conversations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null default '',
+  -- attachments/files/sources are small, message-shaped JSON already
+  -- defined client-side in src/lib/chat.ts (ChatMessage) — stored as-is
+  -- rather than normalized into their own tables, same tradeoff the rest
+  -- of this schema makes for prompt metadata vs. fully relational tags.
+  attachments jsonb,
+  files jsonb,
+  sources jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.chat_messages enable row level security;
+
+create policy "Chat messages are managed by owner"
+  on public.chat_messages for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists chat_messages_conversation_id_idx
+  on public.chat_messages(conversation_id);
+create index if not exists chat_messages_user_id_idx
+  on public.chat_messages(user_id);
+
+-- Keep conversation.updated_at current whenever its messages change, so
+-- "most-recently-updated first" sidebar ordering (see loadChatConversations
+-- in src/lib/chat.ts) reflects new messages, not just renames.
+create or replace function public.touch_chat_conversation()
+returns trigger as $$
+begin
+  update public.chat_conversations
+  set updated_at = now()
+  where id = coalesce(new.conversation_id, old.conversation_id);
+  return coalesce(new, old);
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_chat_message_write on public.chat_messages;
+create trigger on_chat_message_write
+  after insert or update or delete on public.chat_messages
+  for each row execute procedure public.touch_chat_conversation();

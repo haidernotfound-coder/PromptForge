@@ -1199,3 +1199,89 @@ text-chat one's do.
 - `src/components/chat/voice-panel.tsx` — renders a "Sources" block under
   grounded model turns (styled to match `chat-panel.tsx`'s); `sources`
   round-trip through `messagesToTurns`/`turnsToMessages` for persistence.
+
+## Cross-Device Chat Sync — COMPLETED
+
+**Bug:** AI Chat's history (`src/lib/chat.ts`) was persisted only to
+`window.localStorage`, keyed by a single unscoped storage key. Two devices
+signed into the *same* account therefore saw two completely independent
+chat histories — a conversation started on a laptop simply didn't exist on
+a phone, and vice versa.
+
+**Fix:** chat history is now backed by Supabase — the same
+Supabase/auth/database infrastructure every other synced feature in this
+app already uses (`folders`, `prompts`, `tags`, `workspaces`) — with
+localStorage demoted to a cache instead of the source of truth.
+
+### How it works
+
+- **New tables**, RLS-scoped by `user_id` exactly like every other
+  per-user table in `supabase/schema.sql`:
+  `public.chat_conversations` (metadata: title, `auto_titled`, `kind`,
+  timestamps) and `public.chat_messages` (role, content, attachments/
+  files/sources as JSONB, `conversation_id` FK). See
+  `supabase/migrations/phase17_chat_sync.sql`.
+- **Per-row sync, not a whole-blob snapshot.** Phase 7's `/api/workspace`
+  syncs prompts/folders/tags as one JSON blob per account — fine for data
+  that's edited as a whole, but risky for chat, where a rename on one
+  device and a new message on another need to converge without either
+  clobbering the other. `/api/chat-history` (GET/PUT/DELETE) instead reads
+  and writes one conversation (plus its messages) at a time.
+- **Reconciliation, not overwrite.** On load, and on every periodic poll,
+  the server's copy is merged against whatever's cached locally by
+  `updatedAt` (`reconcileConversations` in `chat.ts`): whichever side is
+  newer wins, conversation-by-conversation. A stale local cache can never
+  overwrite a newer server write, and a local edit that hasn't pushed yet
+  can never be wiped by a server pull that hasn't caught up.
+- **Local cache stays instant.** `loadChatConversations`/
+  `saveChatConversations` (localStorage) are unchanged and still run on
+  every change, so the sidebar renders immediately on load, still works
+  offline, and demo mode (Supabase not configured, or a demo-only
+  session — `session.isReal === false`) behaves exactly as it did before:
+  local-only, no server calls.
+- **New chats, renames, deletes, and message updates all sync.** Every
+  mutation in `chat-app.tsx` (`handleNew`, `handleRename`, `handleDelete`,
+  `handleMessagesChange`) now also calls `syncConversationToCloud` (an
+  800ms-debounced per-conversation push) or, for deletes,
+  `syncConversationDeleteToCloud` (immediate — nothing to coalesce).
+- **Cross-device convergence** without adding a new realtime system: a
+  15-second poll (paused while the tab is hidden) re-pulls and
+  re-reconciles, so a message sent on a phone shows up on a laptop's
+  sidebar shortly after, without a manual refresh.
+
+### Testing
+
+Verified with `npx tsc --noEmit`, `next lint`, and `next build` (all
+clean) plus a standalone check of `reconcileConversations`'s four merge
+cases (server-newer, local-newer-unpushed, local-only, server-only — all
+resolve without data loss). Manual cross-device testing: sign into the
+same account in two browser sessions, create a conversation in one — it
+appears in the other's sidebar within one poll interval; send a message
+from either device and it lands in both; rename/delete on one device is
+reflected on the other; signing in with a fresh/empty local cache on a
+second device correctly pulls the first device's full history down
+instead of starting empty.
+
+### Files changed
+
+- `supabase/migrations/phase17_chat_sync.sql` — **new**. `chat_conversations`
+  + `chat_messages` tables, RLS policies, and a trigger that bumps a
+  conversation's `updated_at` whenever its messages change. Also appended
+  to `supabase/schema.sql` for fresh installs.
+- `src/types/database.ts` — added `chat_conversations`/`chat_messages` row
+  types.
+- `src/app/api/chat-history/route.ts` — **new**. `GET` (pull all
+  conversations + messages for the signed-in user), `PUT` (upsert one
+  conversation's metadata + replace its message list), `DELETE` (remove
+  one conversation, `?id=...`). RLS-protected the same way
+  `/api/workspace` is.
+- `src/lib/chat-cloud-sync.ts` — **new**. Thin fetch wrapper around
+  `/api/chat-history`, mirroring `cloud-sync.ts`'s pull/push convention.
+- `src/lib/chat.ts` — added `reconcileConversations`, `initChatCloudSync`,
+  `syncConversationToCloud`, `syncConversationDeleteToCloud`. Existing
+  exports (`loadChatConversations`, `saveChatConversations`,
+  `createChatConversation`, etc.) are unchanged.
+- `src/components/chat/chat-app.tsx` — calls `initChatCloudSync` on mount
+  for real accounts; `handleNew`/`handleRename`/`handleDelete`/
+  `handleMessagesChange` now also push the changed conversation (or
+  delete) to the server. UI/layout untouched.

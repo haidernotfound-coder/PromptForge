@@ -17,6 +17,9 @@ import {
   loadChatConversations,
   saveChatConversations,
   titleFromMessage,
+  initChatCloudSync,
+  syncConversationToCloud,
+  syncConversationDeleteToCloud,
   type ChatConversation,
   type ChatMessage,
 } from "@/lib/chat";
@@ -101,6 +104,15 @@ export function ChatApp({
     };
   }, []);
 
+  // Mirrors `conversations` synchronously so the cloud-sync poll's
+  // `getLocal` callback (called from outside React's render cycle) always
+  // sees the latest local state instead of a stale closure over whatever
+  // `conversations` was when initChatCloudSync was first called.
+  const conversationsRef = React.useRef<ChatConversation[]>([]);
+  React.useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
   React.useEffect(() => {
     const loaded = loadChatConversations();
     // Land straight in a fresh conversation on a brand-new browser instead
@@ -116,11 +128,35 @@ export function ChatApp({
       setActiveId(loaded[0]?.id ?? null);
     }
     setHydrated(true);
+
+    // Real accounts only (see session.isReal) — demo mode has no
+    // account-scoped server row to sync to, so it stays local-only exactly
+    // as before. Pulls the server's copy, reconciles it against whatever
+    // was just loaded from localStorage above (by updatedAt — see
+    // reconcileConversations), and keeps polling so a second device's
+    // edits show up here without a manual refresh.
+    if (session.isReal) {
+      void initChatCloudSync(
+        () => conversationsRef.current,
+        (reconciled) => {
+          saveChatConversations(reconciled);
+          setConversations(reconciled);
+          // Keep the active selection stable across a background sync —
+          // only fall back to the newest conversation if the previously
+          // active one no longer exists (e.g. deleted on another device).
+          setActiveId((prevActive) =>
+            reconciled.some((c) => c.id === prevActive) ? prevActive : reconciled[0]?.id ?? null
+          );
+        }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function persist(next: ChatConversation[]) {
+  function persist(next: ChatConversation[], changed?: ChatConversation) {
     setConversations(next);
     saveChatConversations(next);
+    if (changed) syncConversationToCloud(changed);
   }
 
   function handleNew() {
@@ -128,7 +164,7 @@ export function ChatApp({
     // the Voice tab starts a fresh voice conversation instead of a text
     // one, and vice versa.
     const fresh = tab === "voice" ? createVoiceConversation() : createChatConversation();
-    persist([fresh, ...conversations]);
+    persist([fresh, ...conversations], fresh);
     setActiveId(fresh.id);
     setMobileOpen(false);
   }
@@ -152,13 +188,20 @@ export function ChatApp({
       setActiveId(existing.id);
     } else {
       const fresh = next === "voice" ? createVoiceConversation() : createChatConversation();
-      persist([fresh, ...conversations]);
+      persist([fresh, ...conversations], fresh);
       setActiveId(fresh.id);
     }
   }
 
   function handleRename(id: string, title: string) {
-    persist(conversations.map((c) => (c.id === id ? { ...c, title, autoTitled: false } : c)));
+    const now = new Date().toISOString();
+    let changed: ChatConversation | undefined;
+    const next = conversations.map((c) => {
+      if (c.id !== id) return c;
+      changed = { ...c, title, autoTitled: false, updatedAt: now };
+      return changed;
+    });
+    persist(next, changed);
   }
 
   function handleDelete(id: string) {
@@ -167,26 +210,31 @@ export function ChatApp({
     // Never leave the user staring at an empty placeholder after deleting
     // their last chat — spin up a fresh one of the same kind, same as
     // first load.
-    const next =
+    const replacement =
       remaining.length > 0
-        ? remaining
-        : [deleted?.kind === "voice" ? createVoiceConversation() : createChatConversation()];
-    persist(next);
-    if (activeId === id) setActiveId(next[0].id);
+        ? null
+        : deleted?.kind === "voice"
+        ? createVoiceConversation()
+        : createChatConversation();
+    const next = replacement ? [...remaining, replacement] : remaining;
+    persist(next, replacement ?? undefined);
+    syncConversationDeleteToCloud(id);
+    if (activeId === id) setActiveId(next[0]?.id ?? null);
   }
 
   function handleMessagesChange(id: string, messages: ChatMessage[]) {
     const now = new Date().toISOString();
-    persist(
-      conversations
-        .map((c) => {
-          if (c.id !== id) return c;
-          const firstUser = messages.find((m) => m.role === "user");
-          const title = c.autoTitled && firstUser ? titleFromMessage(firstUser.content) : c.title;
-          return { ...c, messages, title, autoTitled: c.autoTitled && !firstUser, updatedAt: now };
-        })
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    );
+    let changed: ChatConversation | undefined;
+    const next = conversations
+      .map((c) => {
+        if (c.id !== id) return c;
+        const firstUser = messages.find((m) => m.role === "user");
+        const title = c.autoTitled && firstUser ? titleFromMessage(firstUser.content) : c.title;
+        changed = { ...c, messages, title, autoTitled: c.autoTitled && !firstUser, updatedAt: now };
+        return changed;
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    persist(next, changed);
   }
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
