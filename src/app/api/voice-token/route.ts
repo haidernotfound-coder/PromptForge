@@ -39,12 +39,28 @@ export const runtime = "nodejs";
 // gemini-3.1-flash-live-preview does not appear in the model list at all
 // for these projects (while gemini-2.5-flash-native-audio-* models do) --
 // that's what was producing the persistent 429s regardless of key
-// rotation working correctly. gemini-2.5-flash-native-audio-latest is the
-// "latest" alias for the older, confirmed-available native-audio Live
-// model, and is what free-tier voice mode should target until 3.1 Flash
-// Live is actually available to these projects. If it later shows up in
-// GET /v1alpha/models, swap this back.
-const VOICE_MODEL = "gemini-2.5-flash-native-audio-latest";
+// rotation working correctly. If 3.1 Flash Live later shows up in
+// GET /v1alpha/models, prefer it over both models below.
+//
+// Between the 2.5 native-audio variants: -latest was producing multi-
+// second-delayed, truncated inputTranscription text (e.g. "He" arriving
+// 2-3s after speech, "Ye" instead of "Yes") even though model audio
+// replies themselves were fast (~1-2s). This matches widely-reported,
+// still-open upstream issues with inputTranscription lag/truncation on
+// Gemini's native-audio Live models generally (see e.g.
+// googleapis/python-genai#2117 and the Gemini API forum thread
+// "Significant delay with Gemini Live 2.5 Flash (native audio)") -- so
+// it isn't fully fixable from this app's config alone. Set to the
+// -preview-12-2025 dated snapshot, which as of Aug 2026 is the current
+// documented native-audio Live preview on ai.google.dev (the -09-2025
+// snapshot referenced in older docs/threads appears to have been
+// superseded by it). UNVERIFIED for this project's free tier -- the
+// only reliable check is a live GET /v1alpha/models call against the
+// actual configured keys (same as how -latest and 3.1 Live's
+// availability were confirmed above); if every key 429s specifically on
+// mint or connect for this model, that confirms it isn't enabled here
+// yet and -latest is the fallback to revert to.
+const VOICE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 
 // A session must be *started* within this window of minting the token.
 // Kept short since the token is normally consumed within a second or two
