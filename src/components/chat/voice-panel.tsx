@@ -2,9 +2,21 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  PhoneOff,
+  TriangleAlert,
+  Loader2,
+  Video,
+  VideoOff,
+  SwitchCamera,
+  Zap,
+  ZapOff,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useVoiceSession, type VoiceState } from "@/lib/use-voice-session";
+import { useVoiceSession, type VoiceState, type VoiceTurn } from "@/lib/use-voice-session";
+import { makeChatMessage, type ChatConversation, type ChatMessage } from "@/lib/chat";
 
 const STATE_LABEL: Record<VoiceState, string> = {
   idle: "Tap to start talking",
@@ -14,6 +26,30 @@ const STATE_LABEL: Record<VoiceState, string> = {
   speaking: "Speaking…",
   error: "Something went wrong",
 };
+
+/** Converts this conversation's saved messages into the hook's VoiceTurn
+ *  shape, so resuming a saved voice chat preloads its transcript. Voice
+ *  turns are persisted as plain ChatMessages (see turnsToMessages below) --
+ *  same storage/shape a text chat uses -- so no separate voice-transcript
+ *  format exists anywhere else in the app. */
+function messagesToTurns(messages: ChatMessage[]): VoiceTurn[] {
+  return messages.map((m) => ({
+    id: m.id,
+    role: m.role === "assistant" ? "model" : "user",
+    text: m.content,
+    final: true,
+  }));
+}
+
+/** The inverse of messagesToTurns, used to persist the live transcript back
+ *  onto the conversation as turns finalize. Only final turns are persisted
+ *  -- an in-progress (still-streaming) turn isn't durable yet and would
+ *  just get overwritten a moment later anyway. */
+function turnsToMessages(turns: VoiceTurn[]): ChatMessage[] {
+  return turns
+    .filter((t) => t.final && t.text.trim())
+    .map((t) => makeChatMessage(t.role === "model" ? "assistant" : "user", t.text));
+}
 
 /** The animated orb -- ChatGPT-voice-style pulsing core, with distinct
  *  motion per state (idle breathing, listening ripple, speaking pulse
@@ -90,7 +126,7 @@ function VoiceOrb({ state }: { state: VoiceState }) {
 }
 
 /** Small round icon button used for the secondary controls (mute, camera,
- *  switch camera) that sit alongside the main call/hang-up button. */
+ *  switch camera, torch) that sit alongside the main call/hang-up button. */
 function ControlButton({
   active,
   danger,
@@ -127,19 +163,30 @@ function ControlButton({
   );
 }
 
-export function VoicePanel({ configured }: { configured: boolean | null }) {
+export function VoicePanel({
+  conversation,
+  configured,
+  onMessagesChange,
+}: {
+  conversation: ChatConversation;
+  configured: boolean | null;
+  onMessagesChange: (messages: ChatMessage[]) => void;
+}) {
   const {
     state,
     error,
     turns,
     muted,
     cameraOn,
+    torchSupported,
+    torchOn,
     videoRef,
     start,
     stop,
     toggleMute,
     toggleCamera,
     switchCamera,
+    toggleTorch,
   } = useVoiceSession();
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -148,13 +195,29 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [turns]);
 
+  // Persist the transcript as it grows -- every time a turn finalizes
+  // (see turnsToMessages: only final turns are written), save it onto this
+  // conversation the same way a text chat's messages get saved, so a
+  // voice conversation survives a refresh/tab switch/browser restart and
+  // shows up with its own history in the sidebar.
+  const lastSavedCountRef = React.useRef(conversation.messages.length);
+  React.useEffect(() => {
+    const finalized = turnsToMessages(turns);
+    if (finalized.length > lastSavedCountRef.current) {
+      lastSavedCountRef.current = finalized.length;
+      onMessagesChange(finalized);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns]);
+
   const live = state !== "idle" && state !== "error";
 
   async function handleToggle() {
     if (live) {
       stop();
     } else {
-      await start();
+      lastSavedCountRef.current = conversation.messages.length;
+      await start(messagesToTurns(conversation.messages));
     }
   }
 
@@ -171,18 +234,23 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
     );
   }
 
+  // Show saved history immediately (before the call is (re)started) so
+  // reopening a past voice conversation from the sidebar isn't a blank
+  // screen until the user taps to call again.
+  const displayTurns = turns.length > 0 ? turns : messagesToTurns(conversation.messages);
+
   return (
     <div className="flex h-full min-h-0 flex-col items-center">
       <div ref={scrollRef} className="w-full min-h-0 flex-1 overflow-y-auto px-4 pt-6 sm:px-8">
         <div className="mx-auto flex max-w-lg flex-col gap-3 pb-4">
-          {turns.length === 0 && !live && (
+          {displayTurns.length === 0 && !live && (
             <p className="pt-10 text-center text-sm text-text-faint">
               Start a conversation and speak naturally — Gemini will respond in real time and you can
               interrupt it any time by just talking. Turn on your camera to show it what you&apos;re
               looking at.
             </p>
           )}
-          {turns.map((turn) => (
+          {displayTurns.map((turn) => (
             <div
               key={turn.id}
               className={cn(
@@ -234,7 +302,7 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-4">
           {live && (
             <ControlButton
               label={muted ? "Unmute microphone" : "Mute microphone"}
@@ -279,12 +347,22 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
               <SwitchCamera className="h-5 w-5" />
             </ControlButton>
           )}
+
+          {live && cameraOn && torchSupported && (
+            <ControlButton
+              label={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
+              onClick={() => toggleTorch()}
+              active={torchOn}
+            >
+              {torchOn ? <Zap className="h-5 w-5" /> : <ZapOff className="h-5 w-5" />}
+            </ControlButton>
+          )}
         </div>
 
         {state === "error" && (
           <button
             type="button"
-            onClick={() => start()}
+            onClick={() => start(messagesToTurns(conversation.messages))}
             className="flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
           >
             <MicOff className="h-3.5 w-3.5" /> Try again

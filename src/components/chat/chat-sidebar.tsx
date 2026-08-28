@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, X, Search } from "lucide-react";
+import { Plus, MessageSquare, AudioLines, MoreHorizontal, Pencil, Trash2, Check, X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -130,7 +130,11 @@ export function ChatSidebar({
                       onClick={() => onSelect(c.id)}
                       className="flex flex-1 items-center gap-2 overflow-hidden text-left"
                     >
-                      <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                      {c.kind === "voice" ? (
+                        <AudioLines className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      ) : (
+                        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                      )}
                       <span className="truncate">{c.title}</span>
                     </button>
                     <DropdownMenu>

@@ -52,6 +52,12 @@ export interface ChatConversation {
   /** true until the user sends a first message or renames it — lets the UI
    *  auto-title from the first message without clobbering a manual rename. */
   autoTitled: boolean;
+  /** "voice" conversations are Gemini Live calls (see use-voice-session.ts
+   *  / voice-panel.tsx) whose transcript turns get persisted here just
+   *  like a text chat's messages — same storage, same sidebar, just shown
+   *  with an audio icon and reopened into Voice Mode instead of the text
+   *  panel. Defaults to "text" for conversations saved before this existed. */
+  kind?: "text" | "voice";
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
@@ -99,7 +105,7 @@ export function loadChatConversations(): ChatConversation[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(isValidConversation)
-      .map((c) => ({ ...c, autoTitled: c.autoTitled ?? false }))
+      .map((c) => ({ ...c, autoTitled: c.autoTitled ?? false, kind: c.kind ?? "text" }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {
     return [];
@@ -121,6 +127,20 @@ export function createChatConversation(): ChatConversation {
     id: id(),
     title: "New chat",
     autoTitled: true,
+    kind: "text",
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function createVoiceConversation(): ChatConversation {
+  const now = new Date().toISOString();
+  return {
+    id: id(),
+    title: "New voice chat",
+    autoTitled: true,
+    kind: "voice",
     messages: [],
     createdAt: now,
     updatedAt: now,

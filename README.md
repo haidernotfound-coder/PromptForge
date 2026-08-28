@@ -986,15 +986,48 @@ but actual audio-to-audio streaming over the Gemini Live API
   orb (different motion per state), a live transcript, a mute toggle, a
   camera toggle (replaces the orb with a live local preview once on,
   matching how ChatGPT/Gemini's own voice+video UI puts video front and
-  center), a front/back camera switch button (mobile devices with both),
-  and a single call/hang-up button. Uses the app's existing design tokens
-  (`bg-gradient-accent`, `shadow-glow`, etc.) so it matches the rest of
-  NexPrompt rather than looking bolted on.
+  center), a front/back camera switch button, a flashlight/torch toggle
+  (front and back cameras, on devices/browsers that support it), and a
+  single call/hang-up button. Also owns persisting the transcript: it
+  turns the conversation's saved `messages` into the hook's initial
+  transcript when a call (re)starts, and saves each finalized turn back
+  onto the conversation exactly like a text chat's `ChatMessage[]` — see
+  "Voice conversations are saved" below. Uses the app's existing design
+  tokens (`bg-gradient-accent`, `shadow-glow`, etc.) so it matches the
+  rest of NexPrompt rather than looking bolted on.
 - **`src/components/chat/chat-app.tsx`** — adds the Chats/Voice tab
-  switcher (Radix `Tabs`, already used elsewhere in the app) and renders
-  `VoicePanel` instead of `ChatPanel` when Voice is selected. The existing
-  text chat (history, attachments, provider fallback, everything in
-  `chat-panel.tsx`) is untouched.
+  switcher (Radix `Tabs`, already used elsewhere in the app). Which tab is
+  selected now follows the *active conversation's* kind: picking a voice
+  conversation from the sidebar switches to the Voice tab and shows its
+  transcript; picking the Voice tab directly jumps to the most recent
+  voice conversation (or starts a new one if none exist yet); "New chat"
+  respects whichever tab is currently open. The existing text chat
+  (history, attachments, provider fallback, everything in
+  `chat-panel.tsx`) is otherwise untouched.
+
+### Voice conversations are saved
+
+Voice Mode conversations live in the exact same `localStorage`-backed
+conversation list a text chat uses (`src/lib/chat.ts`) — same array, same
+`ChatConversation` shape, just with a `kind: "voice"` tag. Each finalized
+transcript turn (from Gemini's input/output audio transcription) is
+persisted as a plain `ChatMessage`, so:
+
+- The sidebar lists voice conversations alongside text ones, but with an
+  **audio-waveform icon** (`AudioLines`) instead of the message-bubble icon,
+  so they're visually distinct at a glance.
+- Clicking a saved voice conversation reopens Voice Mode with its full
+  transcript already shown — tap the mic to start a **new call that
+  continues that conversation** (the transcript keeps growing in place)
+  rather than starting over blank.
+- Renaming, deleting, and search in the sidebar all work on voice
+  conversations exactly like text ones.
+- "New chat" while the Voice tab is open starts a **new, separate** voice
+  conversation, the same way it starts a new text thread on the Chats tab.
+
+Conversations created before this update have no `kind` field and are
+treated as `"text"` automatically — nothing needs migrating.
+
 
 ### Security
 
@@ -1027,11 +1060,15 @@ but actual audio-to-audio streaming over the Gemini Live API
 6. Tap the camera icon to turn video on. Allow camera access when
    prompted — you'll see your own camera preview, and Gemini receives a
    still frame roughly once a second, so you can show it something (a
-   document, an object, your surroundings) and ask about it. On a device
-   with more than one camera, a switch-camera button appears next to it
-   to flip between front/selfie and back cameras.
+   document, an object, your surroundings) and ask about it. A
+   switch-camera button appears next to it to flip between front/selfie
+   and back cameras (properly releases the old camera first, so the
+   switch actually takes effect); if the active camera supports it, a
+   flashlight/torch button also appears.
 7. Click the red hang-up button to end the call and release the
-   microphone and camera.
+   microphone and camera. Reopen the same conversation from the sidebar
+   (look for the audio-waveform icon) and tap the mic again to continue
+   where you left off — the transcript is saved.
 
 If `GEMINI_VOICE_API_KEY` isn't set, the Voice tab still renders but shows
 "Voice Mode isn't configured yet" instead of erroring — the rest of the
@@ -1045,8 +1082,16 @@ app (including the existing text chat) is completely unaffected.
   `getLastGoodGeminiVoiceKeyIndex` / `setLastGoodGeminiVoiceKeyIndex`.
 - `src/app/api/voice-token/route.ts` — **new**. Ephemeral token minting.
 - `src/lib/use-voice-session.ts` — **new**. Client session/audio/video hook
-  (mute toggle, camera capture at ~1fps, front/back camera switching).
+  (mute toggle, camera capture at ~1fps, front/back camera switching with
+  proper old-track release, flashlight/torch toggle, resumable transcript
+  via `start(initialTurns)`).
+- `src/lib/chat.ts` — added `kind: "text" | "voice"` to `ChatConversation`
+  and a `createVoiceConversation()` helper; existing saved conversations
+  default to `kind: "text"`.
 - `src/components/chat/voice-panel.tsx` — **new**. Voice UI (orb, camera
-  preview, mute/camera/switch-camera/hang-up controls).
+  preview, mute/camera/switch-camera/torch/hang-up controls) and
+  transcript persistence.
+- `src/components/chat/chat-sidebar.tsx` — shows an audio-waveform icon
+  for voice conversations instead of the message-bubble icon.
 - `src/components/chat/chat-app.tsx` — added the Chats/Voice tab switcher.
 - `.env.example` — documented `GEMINI_VOICE_API_KEY_1`..`_7`.

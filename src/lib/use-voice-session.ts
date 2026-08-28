@@ -32,6 +32,15 @@ import { GoogleGenAI, Modality, type Session, type LiveServerMessage } from "@go
 export type VoiceState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "error";
 export type CameraFacing = "user" | "environment";
 
+/** `torch` is a real, widely-supported (Chrome/Android) MediaTrackConstraint
+ *  for turning a camera's flashlight on/off, but it's non-standard and
+ *  missing from lib.dom.d.ts's MediaTrackCapabilities -- this is just the
+ *  minimal shape we read off `track.getCapabilities()` to feature-detect
+ *  it before offering the flashlight button. */
+interface TorchCapabilities {
+  torch?: boolean;
+}
+
 export interface VoiceTurn {
   id: string;
   role: "user" | "model";
@@ -51,13 +60,20 @@ export interface UseVoiceSessionResult {
   cameraOn: boolean;
   /** Which physical camera is active when cameraOn is true. */
   cameraFacing: CameraFacing;
+  /** True if the active camera track supports a flashlight/torch. Only
+   *  meaningful while cameraOn is true -- most front/selfie cameras and
+   *  most desktop webcams don't support this at all. */
+  torchSupported: boolean;
+  /** True while the flashlight is on. */
+  torchOn: boolean;
   /** Attach to a <video> element to show the local camera preview. */
   videoRef: React.RefObject<HTMLVideoElement>;
-  start: () => Promise<void>;
+  start: (initialTurns?: VoiceTurn[]) => Promise<void>;
   stop: () => void;
   toggleMute: () => void;
   toggleCamera: () => Promise<void>;
   switchCamera: () => Promise<void>;
+  toggleTorch: () => Promise<void>;
 }
 
 const INPUT_SAMPLE_RATE = 16000;
@@ -124,6 +140,21 @@ function nextTurnId() {
   return `voice-turn-${Date.now()}-${turnIdCounter}`;
 }
 
+/** Returns the stream's video track if it exists and reports torch support
+ *  via getCapabilities(), or null otherwise. getCapabilities() itself is
+ *  unsupported on some browsers (notably iOS Safari) and just throws or
+ *  returns {} there, which we treat the same as "no torch". */
+function getTorchTrack(stream: MediaStream | null): MediaStreamTrack | null {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return null;
+  try {
+    const caps = track.getCapabilities?.() as TorchCapabilities | undefined;
+    return caps?.torch ? track : null;
+  } catch {
+    return null;
+  }
+}
+
 export function useVoiceSession(): UseVoiceSessionResult {
   const [state, setState] = React.useState<VoiceState>("idle");
   const [error, setError] = React.useState<string | null>(null);
@@ -132,6 +163,8 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const [muted, setMuted] = React.useState(false);
   const [cameraOn, setCameraOn] = React.useState(false);
   const [cameraFacing, setCameraFacing] = React.useState<CameraFacing>("user");
+  const [torchOn, setTorchOn] = React.useState(false);
+  const [torchSupported, setTorchSupported] = React.useState(false);
 
   const sessionRef = React.useRef<Session | null>(null);
   const micStreamRef = React.useRef<MediaStream | null>(null);
@@ -163,8 +196,13 @@ export function useVoiceSession(): UseVoiceSessionResult {
     }
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current.style.transform = "none";
+    }
     setCameraOn(false);
+    setTorchOn(false);
+    setTorchSupported(false);
   }, []);
 
   const cleanupAudioIO = React.useCallback(() => {
@@ -251,21 +289,53 @@ export function useVoiceSession(): UseVoiceSessionResult {
   }, []);
 
   const openCamera = React.useCallback(async (facing: CameraFacing) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-    });
+    // Release the current camera track *before* requesting the new facing
+    // mode. This was the actual bug behind "switch camera doesn't work":
+    // most browsers only let one active MediaStream hold a given camera
+    // device at a time, so if the old track is still live when the new
+    // getUserMedia() call goes out, the browser either hands back the same
+    // physical camera or silently ignores the facingMode hint entirely.
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+
+    let stream: MediaStream;
+    try {
+      // `exact` actually forces the switch (rather than being a hint the
+      // browser can ignore) on devices that do have both cameras.
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+    } catch (err) {
+      // No camera matching that exact facing mode (common on laptops/
+      // desktops, which only expose one camera reported as "user") --
+      // fall back to an unconstrained request rather than failing the
+      // whole switch outright.
+      if (err instanceof DOMException && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } else {
+        throw err;
+      }
+    }
+
     if (stoppedRef.current) {
       stream.getTracks().forEach((t) => t.stop());
       return;
     }
-    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current = stream;
     cameraFacingRef.current = facing;
     setCameraFacing(facing);
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
+      // Front camera is mirrored for a natural "selfie" preview, same as
+      // every other camera app; the back camera is shown unmirrored so
+      // what Gemini sees on screen matches reality.
+      videoRef.current.style.transform = facing === "user" ? "scaleX(-1)" : "none";
       await videoRef.current.play().catch(() => {});
     }
+    setTorchOn(false);
+    setTorchSupported(getTorchTrack(stream) !== null);
   }, []);
 
   const toggleCamera = React.useCallback(async () => {
@@ -310,6 +380,23 @@ export function useVoiceSession(): UseVoiceSessionResult {
       // running rather than leaving the user with no video at all.
     }
   }, [cameraOn, openCamera]);
+
+  const toggleTorch = React.useCallback(async () => {
+    const track = getTorchTrack(cameraStreamRef.current);
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
+      setTorchOn(next);
+    } catch (err) {
+      console.error("Torch toggle failed", err);
+      // Leave torchOn as-is -- most likely cause is the browser reporting
+      // torch support via getCapabilities() but rejecting applyConstraints
+      // anyway (seen on some Android/Chrome versions when the camera was
+      // just opened), so surface nothing rather than a misleading error
+      // for what's a minor, non-essential feature.
+    }
+  }, [torchOn]);
 
   // Stop any queued playback immediately -- used both for barge-in
   // (interrupted signal) and for cleanup.
@@ -430,11 +517,15 @@ export function useVoiceSession(): UseVoiceSessionResult {
     [clearPlaybackQueue, playAudioChunk]
   );
 
-  const start = React.useCallback(async () => {
+  const start = React.useCallback(async (initialTurns?: VoiceTurn[]) => {
     if (sessionRef.current) return;
     stoppedRef.current = false;
     setError(null);
-    setTurns([]);
+    // Resuming a previously-saved voice conversation preloads its
+    // transcript so it's visible immediately, rather than starting the
+    // panel blank and only showing turns from this new call onward. New
+    // turns from this call are simply appended onto it as they arrive.
+    setTurns(initialTurns ?? []);
     setMuted(false);
     mutedRef.current = false;
     setState("connecting");
@@ -560,11 +651,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
     muted,
     cameraOn,
     cameraFacing,
+    torchSupported,
+    torchOn,
     videoRef,
     start,
     stop,
     toggleMute,
     toggleCamera,
     switchCamera,
+    toggleTorch,
   };
 }

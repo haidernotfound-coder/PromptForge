@@ -13,6 +13,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { VoicePanel } from "@/components/chat/voice-panel";
 import {
   createChatConversation,
+  createVoiceConversation,
   loadChatConversations,
   saveChatConversations,
   titleFromMessage,
@@ -69,7 +70,13 @@ export function ChatApp({
   const [hydrated, setHydrated] = React.useState(false);
   const [configured, setConfigured] = React.useState<boolean | null>(null);
   const [voiceConfigured, setVoiceConfigured] = React.useState<boolean | null>(null);
-  const [mode, setMode] = React.useState<"chat" | "voice">("chat");
+  // Which tab is selected. Normally this just mirrors the active
+  // conversation's kind (selecting a voice chat in the sidebar switches
+  // to the Voice tab automatically, and vice versa) -- it only becomes
+  // "independent" for a moment when the user clicks the Voice tab directly
+  // with a text chat active, since at that point there's no voice
+  // conversation to make active yet (see handleTabChange below).
+  const [tab, setTab] = React.useState<"chat" | "voice">("chat");
 
   React.useEffect(() => {
     let cancelled = false;
@@ -117,7 +124,10 @@ export function ChatApp({
   }
 
   function handleNew() {
-    const fresh = createChatConversation();
+    // Respects whichever tab is currently selected -- "New chat" while on
+    // the Voice tab starts a fresh voice conversation instead of a text
+    // one, and vice versa.
+    const fresh = tab === "voice" ? createVoiceConversation() : createChatConversation();
     persist([fresh, ...conversations]);
     setActiveId(fresh.id);
     setMobileOpen(false);
@@ -125,7 +135,26 @@ export function ChatApp({
 
   function handleSelect(id: string) {
     setActiveId(id);
+    const selected = conversations.find((c) => c.id === id);
+    if (selected) setTab(selected.kind === "voice" ? "voice" : "chat");
     setMobileOpen(false);
+  }
+
+  // Clicking a tab directly (not via the sidebar) switches to that kind of
+  // conversation: if the active conversation is already the right kind,
+  // nothing else needs to happen; otherwise jump to the most recent
+  // conversation of that kind, or start a fresh one if there isn't one yet.
+  function handleTabChange(next: "chat" | "voice") {
+    setTab(next);
+    if (active?.kind === next || (next === "chat" && !active?.kind)) return;
+    const existing = conversations.find((c) => (next === "voice" ? c.kind === "voice" : c.kind !== "voice"));
+    if (existing) {
+      setActiveId(existing.id);
+    } else {
+      const fresh = next === "voice" ? createVoiceConversation() : createChatConversation();
+      persist([fresh, ...conversations]);
+      setActiveId(fresh.id);
+    }
   }
 
   function handleRename(id: string, title: string) {
@@ -133,10 +162,15 @@ export function ChatApp({
   }
 
   function handleDelete(id: string) {
+    const deleted = conversations.find((c) => c.id === id);
     const remaining = conversations.filter((c) => c.id !== id);
     // Never leave the user staring at an empty placeholder after deleting
-    // their last chat — spin up a fresh one, same as first load.
-    const next = remaining.length > 0 ? remaining : [createChatConversation()];
+    // their last chat — spin up a fresh one of the same kind, same as
+    // first load.
+    const next =
+      remaining.length > 0
+        ? remaining
+        : [deleted?.kind === "voice" ? createVoiceConversation() : createChatConversation()];
     persist(next);
     if (activeId === id) setActiveId(next[0].id);
   }
@@ -200,21 +234,21 @@ export function ChatApp({
             </Dialog.Portal>
           </Dialog.Root>
           <span className="truncate text-sm font-medium text-text">
-            {mode === "voice" ? "Voice Mode" : active?.title ?? "AI Chat"}
+            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
           </span>
-          {mode === "chat" && configured === false && <Badge variant="brass">Demo</Badge>}
-          {mode === "chat" && configured === true && <Badge variant="success">Live</Badge>}
-          {mode === "chat" && configured === null && <span className="h-5 w-12" />}
+          {tab === "chat" && configured === false && <Badge variant="brass">Demo</Badge>}
+          {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+          {tab === "chat" && configured === null && <span className="h-5 w-12" />}
         </header>
 
         <header className="hidden shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2.5 md:flex">
           <span className="truncate text-sm font-medium text-text-muted">
-            {mode === "voice" ? "Voice Mode" : active?.title ?? "AI Chat"}
+            {tab === "voice" ? active?.title ?? "Voice Mode" : active?.title ?? "AI Chat"}
           </span>
           <div className="flex items-center gap-3">
-            {mode === "chat" && configured === false && <Badge variant="brass">Demo mode</Badge>}
-            {mode === "chat" && configured === true && <Badge variant="success">Live</Badge>}
-            <Tabs value={mode} onValueChange={(v) => setMode(v as "chat" | "voice")}>
+            {tab === "chat" && configured === false && <Badge variant="brass">Demo mode</Badge>}
+            {tab === "chat" && configured === true && <Badge variant="success">Live</Badge>}
+            <Tabs value={tab} onValueChange={(v) => handleTabChange(v as "chat" | "voice")}>
               <TabsList>
                 <TabsTrigger value="chat" className="gap-1.5">
                   <MessagesSquare className="h-3.5 w-3.5" /> Chats
@@ -231,7 +265,7 @@ export function ChatApp({
             tabs inline; on mobile it's already tight with the hamburger +
             title + badge, so the switcher gets its own row. */}
         <div className="flex shrink-0 items-center justify-center border-b border-border py-2 md:hidden">
-          <Tabs value={mode} onValueChange={(v) => setMode(v as "chat" | "voice")}>
+          <Tabs value={tab} onValueChange={(v) => handleTabChange(v as "chat" | "voice")}>
             <TabsList>
               <TabsTrigger value="chat" className="gap-1.5">
                 <MessagesSquare className="h-3.5 w-3.5" /> Chats
@@ -244,8 +278,15 @@ export function ChatApp({
         </div>
 
         <div className="min-h-0 flex-1">
-          {mode === "voice" ? (
-            <VoicePanel configured={voiceConfigured} />
+          {tab === "voice" ? (
+            !hydrated || !active ? null : (
+              <VoicePanel
+                key={active.id}
+                conversation={active}
+                configured={voiceConfigured}
+                onMessagesChange={(messages) => handleMessagesChange(active.id, messages)}
+              />
+            )
           ) : disabledReason ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
               <TriangleAlert className="h-8 w-8 text-brass" />
