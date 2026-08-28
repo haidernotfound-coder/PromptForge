@@ -51,6 +51,12 @@ export interface UseVoiceSessionResult {
   cameraOn: boolean;
   /** Which physical camera is active when cameraOn is true. */
   cameraFacing: CameraFacing;
+  /** True if the active camera track supports a flashlight/torch. Only
+   *  meaningful while cameraOn is true -- most front/selfie cameras and
+   *  most desktop webcams don't support this at all. */
+  torchSupported: boolean;
+  /** True while the flashlight is on. */
+  torchOn: boolean;
   /** Attach to a <video> element to show the local camera preview. */
   videoRef: React.RefObject<HTMLVideoElement>;
   start: () => Promise<void>;
@@ -58,6 +64,7 @@ export interface UseVoiceSessionResult {
   toggleMute: () => void;
   toggleCamera: () => Promise<void>;
   switchCamera: () => Promise<void>;
+  toggleTorch: () => Promise<void>;
 }
 
 const INPUT_SAMPLE_RATE = 16000;
@@ -72,6 +79,30 @@ const PROCESSOR_BUFFER_SIZE = 4096;
 const VIDEO_FRAME_INTERVAL_MS = 1000;
 const VIDEO_MAX_DIMENSION = 768;
 const VIDEO_JPEG_QUALITY = 0.7;
+
+/** `torch` is a real, widely-supported (Chrome/Android) MediaTrackConstraint
+ *  for turning a camera's flashlight on/off, but it's non-standard and
+ *  missing from lib.dom.d.ts's MediaTrackCapabilities -- this is just the
+ *  minimal shape we read off `track.getCapabilities()` to feature-detect
+ *  it before offering the flashlight button. */
+interface TorchCapabilities {
+  torch?: boolean;
+}
+
+/** Returns the stream's video track if it exists and reports torch support
+ *  via getCapabilities(), or null otherwise. getCapabilities() itself is
+ *  unsupported on some browsers (notably iOS Safari) and just throws or
+ *  returns {} there, which we treat the same as "no torch". */
+function getTorchTrack(stream: MediaStream | null): MediaStreamTrack | null {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return null;
+  try {
+    const caps = track.getCapabilities?.() as TorchCapabilities | undefined;
+    return caps?.torch ? track : null;
+  } catch {
+    return null;
+  }
+}
 
 function floatTo16BitPCM(float32: Float32Array): Int16Array {
   const out = new Int16Array(float32.length);
@@ -124,6 +155,29 @@ function nextTurnId() {
   return `voice-turn-${Date.now()}-${turnIdCounter}`;
 }
 
+// Token minting (/api/voice-token) already round-robins across the
+// GEMINI_VOICE_API_KEY_1.._12 pool, but that only rotates keys while
+// minting the token -- it can't see that a key's Live-session quota is
+// actually exhausted, since that's only discovered once the WebSocket
+// handshake itself is accepted-then-killed by the server a moment later.
+// Without a retry here, drawing one bad key from the pool kills the whole
+// call. isQuotaLikeFailure + the retry loop in start() below cover that
+// gap: on a quota/transient-looking close or error, mint a brand new
+// token (very likely landing on a different key) and reconnect, up to a
+// small cap, before actually surfacing an error to the user.
+function isQuotaLikeFailure(reasonOrMessage: string | undefined): boolean {
+  if (!reasonOrMessage) return false;
+  const s = reasonOrMessage.toLowerCase();
+  return (
+    s.includes("resource_exhausted") ||
+    s.includes("quota") ||
+    s.includes("429") ||
+    s.includes("rate limit") ||
+    s.includes("unavailable") ||
+    s.includes("503")
+  );
+}
+
 export function useVoiceSession(): UseVoiceSessionResult {
   const [state, setState] = React.useState<VoiceState>("idle");
   const [error, setError] = React.useState<string | null>(null);
@@ -132,6 +186,8 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const [muted, setMuted] = React.useState(false);
   const [cameraOn, setCameraOn] = React.useState(false);
   const [cameraFacing, setCameraFacing] = React.useState<CameraFacing>("user");
+  const [torchOn, setTorchOn] = React.useState(false);
+  const [torchSupported, setTorchSupported] = React.useState(false);
 
   const sessionRef = React.useRef<Session | null>(null);
   const micStreamRef = React.useRef<MediaStream | null>(null);
@@ -156,6 +212,33 @@ export function useVoiceSession(): UseVoiceSessionResult {
   const currentUserTurnIdRef = React.useRef<string | null>(null);
   const stoppedRef = React.useRef(false);
 
+  // How many times the current call has retried the connection itself
+  // (fresh token + fresh ai.live.connect()) after a quota-flavored
+  // rejection. Capped independent of the key-pool size so a config change
+  // can't accidentally spin through dozens of attempts; a handful is
+  // enough to skip past a few exhausted keys without a long wait.
+  const connectRetriesRef = React.useRef(0);
+  const MAX_CONNECT_RETRIES = 6;
+  // A session must stay open this long past onopen before we trust it
+  // enough to reset the retry counter. Without this, a key that passes
+  // the WebSocket handshake but then gets killed by server-side quota
+  // validation a moment later would refill the retry budget on every
+  // single attempt -- letting a fully-exhausted key pool retry forever,
+  // each attempt getting just far enough to "open" before dying, instead
+  // of ever backing off meaningfully or surfacing an error.
+  const OPEN_STABLE_RESET_MS = 4000;
+  const openResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Key indices that minted a token successfully but whose Live
+  // connection then failed for this call -- sent to /api/voice-token so
+  // it routes around them instead of handing back the same known-bad key.
+  // Reset per start().
+  const failedKeyIndicesRef = React.useRef<number[]>([]);
+  // Guards against onerror and onclose both firing for the same
+  // WebSocket failure (a common pattern) and each independently kicking
+  // off a retry -- without this, two concurrent retry chains could run
+  // at once.
+  const handlingDisconnectRef = React.useRef(false);
+
   const stopVideoCapture = React.useCallback(() => {
     if (videoIntervalRef.current) {
       clearInterval(videoIntervalRef.current);
@@ -163,8 +246,13 @@ export function useVoiceSession(): UseVoiceSessionResult {
     }
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current.style.transform = "none";
+    }
     setCameraOn(false);
+    setTorchOn(false);
+    setTorchSupported(false);
   }, []);
 
   const cleanupAudioIO = React.useCallback(() => {
@@ -198,6 +286,10 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
   const stop = React.useCallback(() => {
     stoppedRef.current = true;
+    if (openResetTimerRef.current) {
+      clearTimeout(openResetTimerRef.current);
+      openResetTimerRef.current = null;
+    }
     sessionRef.current?.close();
     sessionRef.current = null;
     cleanupAudioIO();
@@ -251,21 +343,53 @@ export function useVoiceSession(): UseVoiceSessionResult {
   }, []);
 
   const openCamera = React.useCallback(async (facing: CameraFacing) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-    });
+    // Release the current camera track *before* requesting the new facing
+    // mode. This is the actual fix for "switch camera doesn't work": most
+    // browsers only let one active MediaStream hold a given camera device
+    // at a time, so if the old track is still live when the new
+    // getUserMedia() call goes out, the browser either hands back the same
+    // physical camera or silently ignores the facingMode hint entirely.
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+
+    let stream: MediaStream;
+    try {
+      // `exact` actually forces the switch (rather than being a hint the
+      // browser can ignore) on devices that do have both cameras.
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+    } catch (err) {
+      // No camera matching that exact facing mode (common on laptops/
+      // desktops, which only expose one camera reported as "user") --
+      // fall back to an unconstrained request rather than failing the
+      // whole switch outright.
+      if (err instanceof DOMException && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } else {
+        throw err;
+      }
+    }
+
     if (stoppedRef.current) {
       stream.getTracks().forEach((t) => t.stop());
       return;
     }
-    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current = stream;
     cameraFacingRef.current = facing;
     setCameraFacing(facing);
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
+      // Front camera is mirrored for a natural "selfie" preview, same as
+      // every other camera app; the back camera is shown unmirrored so
+      // what Gemini sees on screen matches reality.
+      videoRef.current.style.transform = facing === "user" ? "scaleX(-1)" : "none";
       await videoRef.current.play().catch(() => {});
     }
+    setTorchOn(false);
+    setTorchSupported(getTorchTrack(stream) !== null);
   }, []);
 
   const toggleCamera = React.useCallback(async () => {
@@ -310,6 +434,23 @@ export function useVoiceSession(): UseVoiceSessionResult {
       // running rather than leaving the user with no video at all.
     }
   }, [cameraOn, openCamera]);
+
+  const toggleTorch = React.useCallback(async () => {
+    const track = getTorchTrack(cameraStreamRef.current);
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
+      setTorchOn(next);
+    } catch (err) {
+      console.error("Torch toggle failed", err);
+      // Leave torchOn as-is -- most likely cause is the browser reporting
+      // torch support via getCapabilities() but rejecting applyConstraints
+      // anyway (seen on some Android/Chrome versions when the camera was
+      // just opened), so surface nothing rather than a misleading error
+      // for what's a minor, non-essential feature.
+    }
+  }, [torchOn]);
 
   // Stop any queued playback immediately -- used both for barge-in
   // (interrupted signal) and for cleanup.
@@ -430,6 +571,137 @@ export function useVoiceSession(): UseVoiceSessionResult {
     [clearPlaybackQueue, playAudioChunk]
   );
 
+  // Mints a fresh ephemeral token (very likely from a different key in
+  // the pool, since /api/voice-token round-robins on every call) and
+  // opens the Live session. Pulled out of start() so a quota-flavored
+  // connect-time rejection can call this again instead of the whole call
+  // just dying on whichever single key it happened to draw first.
+  const connectSession = React.useCallback(async (): Promise<Session> => {
+    const tokenRes = await fetch("/api/voice-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excludeKeyIndices: failedKeyIndicesRef.current }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.token) {
+      throw new Error(tokenData.error || "Couldn't start Voice Mode.");
+    }
+    const usedKeyIndex: number | undefined = tokenData.keyIndex;
+
+    const ai = new GoogleGenAI({ apiKey: tokenData.token });
+
+    return ai.live.connect({
+      model: tokenData.model,
+      config: {
+        responseModalities: [Modality.AUDIO],
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+      },
+      callbacks: {
+        onopen: () => {
+          if (stoppedRef.current) return;
+          // NOTE: deliberately NOT resetting connectRetriesRef here.
+          // onopen only means the WebSocket handshake succeeded --
+          // Gemini Live can still reject the session a few seconds later
+          // once it actually validates quota server-side, which looks
+          // exactly like a fresh "connecting -> listening -> connecting"
+          // cycle. The counter only resets once a session has stayed
+          // open long enough to trust it (see OPEN_STABLE_RESET_MS), or
+          // in start() for a brand new call.
+          setState("listening");
+          if (openResetTimerRef.current) clearTimeout(openResetTimerRef.current);
+          openResetTimerRef.current = setTimeout(() => {
+            if (stoppedRef.current) return;
+            connectRetriesRef.current = 0;
+            failedKeyIndicesRef.current = [];
+          }, OPEN_STABLE_RESET_MS);
+        },
+        onmessage: (message: LiveServerMessage) => {
+          if (stoppedRef.current) return;
+          handleServerMessage(message);
+        },
+        onerror: (e) => {
+          if (stoppedRef.current) return;
+          if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
+            failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
+          }
+          void handleDisconnect(e.message);
+        },
+        onclose: (e) => {
+          if (stoppedRef.current) return;
+          if (usedKeyIndex !== undefined && !failedKeyIndicesRef.current.includes(usedKeyIndex)) {
+            failedKeyIndicesRef.current = [...failedKeyIndicesRef.current, usedKeyIndex];
+          }
+          void handleDisconnect(e?.reason);
+        },
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleServerMessage]);
+
+  // Shared onerror/onclose handler: retries the connection (new token,
+  // likely a new key) on anything that looks like a quota/transient
+  // rejection, up to MAX_CONNECT_RETRIES; otherwise surfaces the error.
+  async function handleDisconnect(reasonOrMessage: string | undefined) {
+    if (stoppedRef.current) return;
+    if (handlingDisconnectRef.current) return;
+    handlingDisconnectRef.current = true;
+    try {
+      await handleDisconnectInner(reasonOrMessage);
+    } finally {
+      handlingDisconnectRef.current = false;
+    }
+  }
+
+  async function handleDisconnectInner(reasonOrMessage: string | undefined) {
+    if (stoppedRef.current) return;
+    if (openResetTimerRef.current) {
+      clearTimeout(openResetTimerRef.current);
+      openResetTimerRef.current = null;
+    }
+    const canRetry =
+      connectRetriesRef.current < MAX_CONNECT_RETRIES && isQuotaLikeFailure(reasonOrMessage);
+    if (!canRetry) {
+      // No prior session ever having opened (state still "connecting")
+      // means every key in the pool was quota-exhausted -- not a real
+      // mid-call drop -- so "idle" would just silently drop the user
+      // back to a dead-looking screen instead of telling them anything.
+      setError(reasonOrMessage || "Voice call ended unexpectedly.");
+      setState("error");
+      sessionRef.current = null;
+      return;
+    }
+    // Small backoff with jitter so a burst of retries doesn't hammer an
+    // already-rate-limited key/endpoint, and so concurrent users hitting
+    // the same limit don't all retry in lockstep.
+    const attempt = connectRetriesRef.current;
+    const backoffMs = Math.min(1000 * 2 ** attempt, 15000) + Math.floor(Math.random() * 300);
+    connectRetriesRef.current += 1;
+    sessionRef.current = null;
+    setState("connecting");
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    if (stoppedRef.current) return;
+    try {
+      const session = await connectSession();
+      if (stoppedRef.current) {
+        session.close();
+        return;
+      }
+      sessionRef.current = session;
+    } catch (err) {
+      if (stoppedRef.current) return;
+      // The retried connect attempt itself failed outright (e.g. the
+      // token fetch failed, or every remaining key is exhausted) --
+      // treat it as one more quota-like failure and either retry again
+      // or give up per the same cap. Calls the inner function directly
+      // (not the guarded wrapper) since this is a sequential
+      // continuation of the current handleDisconnect invocation, not a
+      // second concurrent event.
+      const message = err instanceof Error ? err.message : "Couldn't start Voice Mode.";
+      await handleDisconnectInner(message);
+    }
+  }
+
   const start = React.useCallback(async () => {
     if (sessionRef.current) return;
     stoppedRef.current = false;
@@ -437,15 +709,11 @@ export function useVoiceSession(): UseVoiceSessionResult {
     setTurns([]);
     setMuted(false);
     mutedRef.current = false;
+    connectRetriesRef.current = 0;
+    failedKeyIndicesRef.current = [];
     setState("connecting");
 
     try {
-      const tokenRes = await fetch("/api/voice-token", { method: "POST" });
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || !tokenData.token) {
-        throw new Error(tokenData.error || "Couldn't start Voice Mode.");
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -456,35 +724,11 @@ export function useVoiceSession(): UseVoiceSessionResult {
       micStreamRef.current = stream;
       setMicGranted(true);
 
-      const ai = new GoogleGenAI({ apiKey: tokenData.token });
-
-      const session = await ai.live.connect({
-        model: tokenData.model,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-        },
-        callbacks: {
-          onopen: () => {
-            if (stoppedRef.current) return;
-            setState("listening");
-          },
-          onmessage: (message: LiveServerMessage) => {
-            if (stoppedRef.current) return;
-            handleServerMessage(message);
-          },
-          onerror: (e) => {
-            if (stoppedRef.current) return;
-            setError(e.message || "Voice connection error");
-            setState("error");
-          },
-          onclose: () => {
-            if (stoppedRef.current) return;
-            setState((s) => (s === "error" ? s : "idle"));
-          },
-        },
-      });
+      const session = await connectSession();
+      if (stoppedRef.current) {
+        session.close();
+        return;
+      }
       sessionRef.current = session;
 
       // Mic capture pipeline: MediaStream -> ScriptProcessorNode (grabs raw
@@ -541,11 +785,12 @@ export function useVoiceSession(): UseVoiceSessionResult {
       sessionRef.current?.close();
       sessionRef.current = null;
     }
-  }, [cleanupAudioIO, handleServerMessage]);
+  }, [cleanupAudioIO, connectSession]);
 
   React.useEffect(() => {
     return () => {
       stoppedRef.current = true;
+      if (openResetTimerRef.current) clearTimeout(openResetTimerRef.current);
       sessionRef.current?.close();
       cleanupAudioIO();
     };
@@ -560,11 +805,14 @@ export function useVoiceSession(): UseVoiceSessionResult {
     muted,
     cameraOn,
     cameraFacing,
+    torchSupported,
+    torchOn,
     videoRef,
     start,
     stop,
     toggleMute,
     toggleCamera,
     switchCamera,
+    toggleTorch,
   };
 }

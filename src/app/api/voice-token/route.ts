@@ -56,7 +56,7 @@ export async function GET() {
   return NextResponse.json({ configured: isVoiceModeConfigured() });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getAppSessionOrNull();
   if (!session) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
@@ -70,8 +70,38 @@ export async function POST() {
     );
   }
 
+  // Indices the client already tried this call and had rejected *after*
+  // minting succeeded -- i.e. the Live connection itself failed for
+  // quota, not the token mint. setLastGoodGeminiVoiceKeyIndex only
+  // reflects "minted a token," which isn't the same as "the key actually
+  // works," since Live-session quota is checked at connect time, not
+  // mint time. Without this, a client retry that starts back at the
+  // persisted "last good" cursor can land on the exact same
+  // already-known-bad key every time.
+  let excludeIndices: number[] = [];
+  try {
+    const body = await request.json();
+    if (Array.isArray(body?.excludeKeyIndices)) {
+      excludeIndices = body.excludeKeyIndices.filter((n: unknown) => typeof n === "number");
+    }
+  } catch {
+    // No body / not JSON -- normal for the first call of a session.
+  }
+  const excludeSet = new Set(excludeIndices);
+
   const startIndex = getLastGoodGeminiVoiceKeyIndex();
-  const order = keys.map((_, i) => (startIndex + i) % keys.length);
+  const order = keys
+    .map((_, i) => (startIndex + i) % keys.length)
+    .filter((i) => !excludeSet.has(i));
+
+  // Every key has already failed this call -- don't bother retrying any
+  // of them again, since we already know none currently work.
+  if (order.length === 0) {
+    return NextResponse.json(
+      { error: "All Voice Mode keys are currently rate-limited or unavailable. Please try again shortly." },
+      { status: 503 }
+    );
+  }
 
   const now = Date.now();
   const expireTime = new Date(now + SESSION_EXPIRE_MINUTES * 60 * 1000).toISOString();
@@ -90,6 +120,18 @@ export async function POST() {
             model: VOICE_MODEL,
             config: {
               responseModalities: [Modality.AUDIO],
+              // Text transcripts of both sides of the call -- without
+              // these locked here, the client's onmessage handler never
+              // receives content.inputTranscription / outputTranscription
+              // events, so the transcript panel stays empty even though
+              // audio plays fine. Must be set here (not only requested
+              // client-side in use-voice-session.ts's connect config)
+              // because liveConnectConstraints is what the server
+              // actually enforces for a token-authed session -- fields
+              // only requested client-side can be silently dropped if
+              // they aren't also part of the locked config.
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
               // Keep system-instruction customization possible without
               // trusting the client to supply it -- locked server-side.
               // (Left unset here: the session's default persona is fine
@@ -100,11 +142,20 @@ export async function POST() {
         },
       });
 
-      setLastGoodGeminiVoiceKeyIndex(i);
+      // Advance the shared cursor to the *next* key, not back to the one
+      // that just minted. Minting almost always succeeds even for a key
+      // whose Live-session quota is actually exhausted -- that's only
+      // discovered later, once the client tries to open the WebSocket
+      // session (see use-voice-session.ts's excludeKeyIndices retry). If
+      // we pinned the cursor to `i` here, every subsequent call would
+      // start the scan at the same key again and just keep re-discovering
+      // the same quota failure at connect time.
+      setLastGoodGeminiVoiceKeyIndex((i + 1) % keys.length);
       return NextResponse.json({
         token: token.name,
         model: VOICE_MODEL,
         expireTime,
+        keyIndex: i,
       });
     } catch (err) {
       console.error("Gemini Live ephemeral token error", err);

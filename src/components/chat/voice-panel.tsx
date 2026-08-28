@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera } from "lucide-react";
+import { Mic, MicOff, PhoneOff, TriangleAlert, Loader2, Video, VideoOff, SwitchCamera, Zap, ZapOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useVoiceSession, type VoiceState } from "@/lib/use-voice-session";
 
@@ -134,12 +134,15 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
     turns,
     muted,
     cameraOn,
+    torchSupported,
+    torchOn,
     videoRef,
     start,
     stop,
     toggleMute,
     toggleCamera,
     switchCamera,
+    toggleTorch,
   } = useVoiceSession();
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -234,7 +237,7 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-4">
           {live && (
             <ControlButton
               label={muted ? "Unmute microphone" : "Mute microphone"}
@@ -277,6 +280,16 @@ export function VoicePanel({ configured }: { configured: boolean | null }) {
           {live && cameraOn && (
             <ControlButton label="Switch camera" onClick={() => switchCamera()}>
               <SwitchCamera className="h-5 w-5" />
+            </ControlButton>
+          )}
+
+          {live && cameraOn && torchSupported && (
+            <ControlButton
+              label={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
+              onClick={() => toggleTorch()}
+              active={torchOn}
+            >
+              {torchOn ? <Zap className="h-5 w-5" /> : <ZapOff className="h-5 w-5" />}
             </ControlButton>
           )}
         </div>
