@@ -28,7 +28,7 @@ export const runtime = "nodejs";
 // Tokens are locked to this model/config server-side (liveConnectConstraints)
 // so the client can never renegotiate a different, unintended configuration
 // even if the token value were somehow tampered with.
-const VOICE_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025";
+const VOICE_MODEL = "gemini-3.1-flash-live-preview";
 
 // A session must be *started* within this window of minting the token.
 // Kept short since the token is normally consumed within a second or two

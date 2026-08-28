@@ -522,6 +522,18 @@ export function useVoiceSession(): UseVoiceSessionResult {
       if (content.outputTranscription?.text) {
         const text = content.outputTranscription.text;
         setState("speaking");
+        // The model has started replying, so the user's turn is over --
+        // clear it now rather than waiting for turnComplete. Without
+        // this, a late-arriving inputTranscription chunk for words the
+        // user finished saying just before the model responded (a very
+        // common race: transcription of the tail end of speech can lag
+        // slightly behind the model deciding to respond) would still
+        // find currentUserTurnIdRef pointing at the old user bubble and
+        // append onto it -- which visually looks like the user's own
+        // text is duplicating/appearing again *after* the assistant's
+        // reply, since turns render in array order, not by arrival time
+        // relative to each other's role.
+        currentUserTurnIdRef.current = null;
         setTurns((prev) => {
           let id = currentModelTurnIdRef.current;
           if (!id) {
