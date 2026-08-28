@@ -246,6 +246,18 @@ export function useVoiceSession(): UseVoiceSessionResult {
 
   const currentModelTurnIdRef = React.useRef<string | null>(null);
   const currentUserTurnIdRef = React.useRef<string | null>(null);
+  // Tracks whether an audio chunk has already been scheduled for the
+  // in-progress model turn -- deliberately separate from
+  // currentModelTurnIdRef (which outputTranscription sets) because audio
+  // and transcription can arrive as separate onmessage events in either
+  // order (per the Live API docs: "a single event can contain multiple
+  // content parts"). If transcription happened to arrive first,
+  // currentModelTurnIdRef would already be non-null by the time the
+  // first real audio chunk shows up, which would wrongly read as "not
+  // the first chunk" and skip the playback-cursor resync in
+  // playAudioChunk. Reset alongside currentModelTurnIdRef wherever a
+  // turn ends or is interrupted.
+  const audioStartedForTurnRef = React.useRef(false);
   const stoppedRef = React.useRef(false);
 
   // How many times start() has retried the *connection* itself (fresh
@@ -345,6 +357,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
     mutedRef.current = false;
     currentModelTurnIdRef.current = null;
     currentUserTurnIdRef.current = null;
+    audioStartedForTurnRef.current = false;
   }, [cleanupAudioIO]);
 
   const toggleMute = React.useCallback(() => {
@@ -515,11 +528,37 @@ export function useVoiceSession(): UseVoiceSessionResult {
     }
   }, []);
 
-  const playAudioChunk = React.useCallback((base64Data: string) => {
+  const playAudioChunk = React.useCallback((base64Data: string, isFirstChunkOfTurn: boolean) => {
     let ctx = outputAudioCtxRef.current;
     if (!ctx || ctx.state === "closed") {
       ctx = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
       outputAudioCtxRef.current = ctx;
+      playCursorRef.current = ctx.currentTime;
+    } else if (isFirstChunkOfTurn) {
+      // Resync the scheduling cursor to real "now" at the start of every
+      // new model turn, not just on barge-in (clearPlaybackQueue) or full
+      // session teardown. Without this, playCursorRef only ever moves
+      // forward (see the Math.max below) and is never pulled back to
+      // ctx.currentTime between turns. If a turn's audio chunks ever
+      // arrive from the server even slightly faster than they play back
+      // -- entirely plausible, since the whole reply can be generated and
+      // streamed down in a burst -- the cursor ends up sitting ahead of
+      // real time by the time that turn ends. The next turn's first
+      // chunk then gets scheduled onto that already-advanced cursor
+      // instead of "now", producing silent dead air before playback
+      // starts even though the chunk was received right away -- and
+      // because nothing ever resyncs it, this drift compounds turn after
+      // turn within one call (matches the reported symptom: first reply
+      // fast, every reply after it progressively more delayed). Only
+      // resyncing on the first chunk of a turn (not every chunk) is
+      // deliberate -- mid-turn chunks must stay scheduled back-to-back
+      // via the existing Math.max logic below for gapless playback
+      // within a single reply. This is a forced assignment, NOT
+      // Math.max(playCursorRef.current, ctx.currentTime) -- if the
+      // cursor has drifted ahead of real time, it's the drifted value
+      // that's wrong and needs correcting back down; taking the max of
+      // the two would just keep the already-drifted (larger) value and
+      // silently no-op this entire fix.
       playCursorRef.current = ctx.currentTime;
     }
 
@@ -584,16 +623,19 @@ export function useVoiceSession(): UseVoiceSessionResult {
         clearPlaybackQueue();
         setState("listening");
         currentModelTurnIdRef.current = null;
+        audioStartedForTurnRef.current = false;
       }
 
       if (content.modelTurn?.parts) {
         let playedAudio = false;
         for (const part of content.modelTurn.parts) {
           if (part.inlineData?.data) {
+            const isFirstChunkOfTurn = !audioStartedForTurnRef.current;
+            audioStartedForTurnRef.current = true;
             if (!playedAudio) {
               console.log(`[VoiceMode timing] first model audio chunk received @ ${performance.now().toFixed(0)}ms`);
             }
-            playAudioChunk(part.inlineData.data);
+            playAudioChunk(part.inlineData.data, isFirstChunkOfTurn);
             playedAudio = true;
           }
         }
@@ -664,6 +706,7 @@ export function useVoiceSession(): UseVoiceSessionResult {
         );
         currentModelTurnIdRef.current = null;
         currentUserTurnIdRef.current = null;
+        audioStartedForTurnRef.current = false;
         setState((s) => (s === "speaking" ? "listening" : s));
       }
 
