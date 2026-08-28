@@ -934,7 +934,18 @@ export function useVoiceSession(): UseVoiceSessionResult {
       // client-side signal is ever missed (e.g. a very quiet trailing
       // word that never crosses the RMS threshold).
       const SILENCE_RMS_THRESHOLD = 0.01; // empirical: below typical room-tone/mic-noise floor, above true silence
-      const SILENCE_HANGOVER_MS = 350; // amplitude must stay below threshold this long before declaring "done talking"
+      // Must stay comfortably ABOVE the server's own silenceDurationMs
+      // (400ms, set in the realtimeInputConfig below) or this client-side
+      // hangover fires first on ordinary mid-sentence pauses (a breath, a
+      // beat between words) and sends audioStreamEnd before the user is
+      // actually done talking. That was fragmenting utterances into
+      // several onset/end cycles per turn and delaying the point at
+      // which Gemini committed a transcript and replied -- the "5 second
+      // lag" symptom. This is meant to be a rarely-firing safety net for
+      // a trailing word so quiet it never crosses the RMS threshold
+      // again, not a competing end-of-speech detector -- so it should
+      // almost never actually fire before the server's own VAD does.
+      const SILENCE_HANGOVER_MS = 900;
       let hasHeardSpeech = false;
       let silenceStartedAt: number | null = null;
       let streamEndSent = true; // starts "ended" -- nothing to flush until real speech begins
