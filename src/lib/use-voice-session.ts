@@ -783,20 +783,22 @@ export function useVoiceSession(): UseVoiceSessionResult {
         // server-side (see api/voice-token/route.ts) -- keeps this
         // description accurate to what the session actually runs with.
         thinkingConfig: { thinkingBudget: 0 },
-        // Mirrors the hybrid-VAD config locked into the token server-side
-        // (see api/voice-token/route.ts) so this description matches
-        // what the session actually runs with -- server VAD is
-        // deliberately LOW/LOW + short silenceDurationMs here, acting
-        // only as a fallback, because end-of-speech is now decided
-        // client-side (audioStreamEnd, sent from the RMS-based detector
-        // further down this file) per Google's documented Hybrid VAD
-        // pattern.
+        // Mirrors the VAD config locked into the token server-side (see
+        // api/voice-token/route.ts) so this description matches what the
+        // session actually runs with. silenceDurationMs is restored to
+        // Google's documented ~800ms server default -- a captured
+        // session proved a too-low value here makes the SERVER silently
+        // buffer/accumulate multiple utterances into one giant prompt
+        // instead of responding per-turn (see the route.ts comment for
+        // the full story), which is a different job from the perceived
+        // end-of-turn timing this file's own RMS-based hangover controls
+        // via audioStreamEnd.
         realtimeInputConfig: {
           automaticActivityDetection: {
             startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
             endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
-            prefixPaddingMs: 20,
-            silenceDurationMs: 100,
+            prefixPaddingMs: 200,
+            silenceDurationMs: 800,
           },
         },
         // Web Access Addon: mirrors the googleSearch tool already locked

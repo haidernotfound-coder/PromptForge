@@ -203,31 +203,40 @@ export async function POST(request: Request) {
               // on every turn. Voice Mode wants the lowest-latency
               // response over deeper reasoning, so this pins it to zero.
               thinkingConfig: { thinkingBudget: 0 },
-              // Hybrid VAD, per Google's own documented pattern for this
-              // exact latency problem (see "Hybrid VAD" in the Live API
-              // capabilities guide). HIGH/HIGH + 400ms here previously
-              // fought the client-side detector in use-voice-session.ts,
-              // and on its own (client sending no audioStreamEnd at all)
-              // this model's server VAD did NOT reliably honor even a
-              // short configured silenceDurationMs -- multiple open
-              // upstream reports (e.g. googleapis/js-genai#1467,
-              // google-gemini/cookbook#1263) describe Live models closing
-              // turns on a much longer real-world delay than requested,
-              // which is exactly the multi-second "inputTranscription
-              // takes forever" symptom this app kept hitting. Per Google's
-              // hybrid-VAD guidance, server VAD is now LOW/LOW with a
-              // short silenceDurationMs so it's a fallback only (robust
-              // start-of-speech detection, and a safety net if the
-              // client-side detector in use-voice-session.ts ever misses
-              // real end-of-speech) -- the client's own hangover-timed
-              // audioStreamEnd call is what actually ends each turn
-              // promptly now.
+              // VAD config. Two things previously believed about this
+              // setting turned out to be wrong, confirmed by a captured
+              // session's raw server messages (RAW onmessage logging in
+              // use-voice-session.ts): with silenceDurationMs: 100, the
+              // server went SILENT for 66 seconds across 15+ onset/
+              // audioStreamEnd cycles, then finally responded to a
+              // "Hello" with promptTokenCount: 460 -- i.e. it was not
+              // dropping those turns, it was silently ACCUMULATING every
+              // fragment into one giant buffered prompt instead of
+              // treating each as a complete, respondable utterance.
+              // Google's own Live API capabilities guide explains exactly
+              // this failure mode: "the server's internal default is
+              // approximately 800ms... too low (100-200ms): the system
+              // ends speech turns during natural pauses, splitting a
+              // single utterance into multiple small audio fragments...
+              // resulting in lower transcription and response quality."
+              // This setting was mis-modeled here as purely an "end of
+              // turn, respond now" trigger to minimize per the earlier
+              // Hybrid VAD idea -- it's actually what the server uses to
+              // decide whether it has a COMPLETE utterance worth
+              // responding to at all, which is a different job. Restored
+              // to Google's own recommended range. Sensitivity stays LOW
+              // (fine either way -- it wasn't implicated by the captured
+              // evidence) so the client-side hangover in
+              // use-voice-session.ts still owns perceived end-of-turn
+              // timing for the UI/audioStreamEnd call; this setting is
+              // solely about the server's own utterance-completeness
+              // buffering, which needs the value Google documents.
               realtimeInputConfig: {
                 automaticActivityDetection: {
                   startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
                   endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
-                  prefixPaddingMs: 20,
-                  silenceDurationMs: 100,
+                  prefixPaddingMs: 200,
+                  silenceDurationMs: 800,
                 },
               },
               // Web Access Addon: Gemini Live's own Grounding with Google
