@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI, ApiError, Modality } from "@google/genai";
+import { GoogleGenAI, ApiError, Modality, StartSensitivity, EndSensitivity } from "@google/genai";
 import { getAppSessionOrNull } from "@/lib/session";
 import { getGeminiVoiceApiKeys, isVoiceModeConfigured } from "@/lib/supabase/config";
 import { getLastGoodGeminiVoiceKeyIndex, setLastGoodGeminiVoiceKeyIndex } from "@/lib/admin/groq-router-state";
@@ -187,6 +187,32 @@ export async function POST(request: Request) {
               // on every turn. Voice Mode wants the lowest-latency
               // response over deeper reasoning, so this pins it to zero.
               thinkingConfig: { thinkingBudget: 0 },
+              // Tightens end-of-turn detection. Left at server defaults,
+              // this model's VAD can wait a noticeable stretch of
+              // trailing silence before deciding the user's turn is
+              // over -- and both the model's reply *and* the final
+              // transcript for what the user just said are gated on
+              // that decision, which is what produced the "my own words
+              // take ~5s to show up in the transcript" symptom (not a
+              // rendering bug -- the transcript event genuinely wasn't
+              // being sent yet). HIGH sensitivity on both ends makes the
+              // model commit to start-of-speech and end-of-speech faster
+              // (per the SDK's own docs: HIGH detects start/end "more
+              // often" i.e. more eagerly/responsively -- LOW is the more
+              // conservative, slower-to-trigger setting, the opposite of
+              // what's wanted here), and a short silenceDurationMs means
+              // it doesn't wait long after you stop talking. Some
+              // trade-off: this makes brief mid-sentence pauses slightly
+              // more likely to be read as end-of-turn, but that's the
+              // right trade for a snappy voice UI.
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+                  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+                  prefixPaddingMs: 200,
+                  silenceDurationMs: 400,
+                },
+              },
               // Web Access Addon: Gemini Live's own Grounding with Google
               // Search tool, enabled the same way the text-chat attachment
               // path enables it for plain generateContent calls (see

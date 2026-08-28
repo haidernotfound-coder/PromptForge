@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { GoogleGenAI, Modality, type Session, type LiveServerMessage, type GroundingMetadata } from "@google/genai";
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, type Session, type LiveServerMessage, type GroundingMetadata } from "@google/genai";
 
 /**
  * Voice Mode session hook.
@@ -84,11 +84,21 @@ export interface UseVoiceSessionResult {
 
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
-// ScriptProcessorNode buffer size -- 4096 frames is the standard tradeoff
-// between latency and avoiding audio glitches/dropped callbacks; at 16kHz
-// that's a 20-40ms-scale chunk once resampled, in the range Gemini's docs
-// recommend for realtime streaming.
-const PROCESSOR_BUFFER_SIZE = 4096;
+// ScriptProcessorNode buffer size, in samples at the *input device's*
+// sample rate (before downsampling to 16kHz) -- this fires
+// onaudioprocess and ships a chunk to Gemini every time it fills. Google's
+// Live API best-practices guide is explicit: send small 20-40ms chunks,
+// not up to a full second of buffering, since every extra millisecond
+// buffered here is added latency before the model even sees the audio.
+// The previous value (4096) was actually ~256ms at 16kHz -- nowhere near
+// the recommended range despite the comment that used to be here -- and
+// was very likely the dominant contributor to the "5 seconds before my
+// own transcript even shows up" symptom, compounding with the model's
+// own end-of-speech silence detection below. 512 samples is exactly 32ms
+// at 16kHz, inside Google's documented sweet spot. Some browsers may
+// only support power-of-two sizes >= 256 for ScriptProcessorNode; 512 is
+// safe everywhere this app targets.
+const PROCESSOR_BUFFER_SIZE = 512;
 // The Live API documents video input as capped at roughly 1 frame/sec --
 // sending faster wastes bandwidth without adding anything the model uses.
 const VIDEO_FRAME_INTERVAL_MS = 1000;
@@ -704,6 +714,17 @@ export function useVoiceSession(): UseVoiceSessionResult {
         // server-side (see api/voice-token/route.ts) -- keeps this
         // description accurate to what the session actually runs with.
         thinkingConfig: { thinkingBudget: 0 },
+        // Mirrors the fast-VAD config locked into the token server-side
+        // (see api/voice-token/route.ts) so this description matches
+        // what the session actually runs with.
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+            prefixPaddingMs: 200,
+            silenceDurationMs: 400,
+          },
+        },
         // Web Access Addon: mirrors the googleSearch tool already locked
         // into this token server-side (see api/voice-token/route.ts).
         // Declaring it again here isn't strictly required -- the token's
