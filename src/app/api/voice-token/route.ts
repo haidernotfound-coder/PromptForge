@@ -48,7 +48,7 @@ export const runtime = "nodejs";
 // available (a real 404/"model not found" on connect, not just an
 // incomplete models-list snapshot), that's the trigger to reconsider --
 // not a single listing check.
-const VOICE_MODEL = "gemini-3.1-flash-live-preview";
+const VOICE_MODEL = "gemini-live-2.5-flash";
 
 // A session must be *started* within this window of minting the token.
 // Kept short since the token is normally consumed within a second or two
